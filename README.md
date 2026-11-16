@@ -41,7 +41,7 @@ Donkey reviews pull requests the moment they open: it leaves inline comments wit
 - PostgreSQL 16+ with the [pgvector](https://github.com/pgvector/pgvector) extension
 - Redis
 - A [GitHub App](#2-create-the-github-app) you own
-- An API key for a model provider supported by [`laravel/ai`](https://laravel.com/docs/ai) (Anthropic by default)
+- An API key for a model provider supported by [`laravel/ai`](https://laravel.com/docs/ai) (Anthropic by default; OpenRouter works with `AI_PROVIDER=openrouter`, `OPENROUTER_API_KEY` and `REVIEW_AI_MODEL`)
 
 Docker Compose can provide PostgreSQL and Redis, or the whole stack (see [Deploy with Docker](#deploy-with-docker)).
 
@@ -72,13 +72,9 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
    docker compose --env-file .env.production -f compose.prod.yaml up -d --build
    ```
 
-   Migrations run automatically before the app starts. The web container listens on `HTTP_PORT` (80 by default) and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Put a TLS-terminating reverse proxy in front of it (Caddy, Traefik, a load balancer) and keep `TRUSTED_PROXIES=*`.
+   Migrations run automatically before the app starts. The web container is reached through Traefik and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
 
-   If Traefik already owns ports 80 and 443 on the host (external network `web`, resolver `lets-encrypt`), add the override and set `DONKEY_HOST` in `.env.production`:
-
-   ```bash
-   docker compose --env-file .env.production -f compose.prod.yaml -f compose.traefik.yaml up -d --build
-   ```
+   The stack is wired for Traefik (external network `web`, entrypoint `websecure`, resolver `lets-encrypt`): set `DONKEY_HOST` in `.env.production` and no host port is published. Adjust the labels in `compose.prod.yaml` if your Traefik setup differs.
 
 4. Open your `APP_URL`, register, create an organization and connect GitHub from **Repositories → Connect GitHub**.
 
@@ -189,7 +185,7 @@ php artisan schedule:work
 | `config/retention.php` | How long webhooks, usage, audit events and conversations are kept |
 | `config/auto_join.php` | Public email providers that can never be auto-joined |
 
-Useful environment variables: `REVIEW_AI_MODEL`, `REVIEW_VERIFIER_ENABLED`, `GRAPH_ENABLED`, `LEARNING_EMBEDDINGS_PROVIDER` (set it, for example to `openai`, to enable similarity search over memories and learnings).
+Useful environment variables: `REGISTRATION_ENABLED=false` (close sign-ups once your own account exists; people with a pending invitation can still register), `REVIEW_AI_MODEL`, `REVIEW_VERIFIER_ENABLED`, `GRAPH_ENABLED`, `LEARNING_EMBEDDINGS_PROVIDER` (set it, for example to `openai`, to enable similarity search over memories and learnings).
 
 ## Using Donkey
 

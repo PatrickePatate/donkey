@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\Invitation;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -21,6 +23,13 @@ new #[Layout('layouts::guest')] #[Title('Sign up')] class extends Component
     public function mount(): void
     {
         $this->email = (string) request()->query('email', '');
+
+        abort_unless(config('app.registration_enabled') || $this->hasPendingInvitation($this->email), 404);
+    }
+
+    private function hasPendingInvitation(string $email): bool
+    {
+        return Invitation::query()->pending()->where('email', Str::lower($email))->exists();
     }
 
     public function register(): void
@@ -30,6 +39,8 @@ new #[Layout('layouts::guest')] #[Title('Sign up')] class extends Component
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ]);
+
+        abort_unless(config('app.registration_enabled') || $this->hasPendingInvitation($validated['email']), 403);
 
         $user = User::query()->create($validated);
 

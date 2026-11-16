@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Open registration
+    |--------------------------------------------------------------------------
+    |
+    | When disabled, only people with a pending invitation can create an
+    | account, using the invited email address.
+    |
+    */
+
+    'registration_enabled' => (bool) env('REGISTRATION_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

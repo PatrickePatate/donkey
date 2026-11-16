@@ -62,9 +62,11 @@ new #[Layout('layouts::guest')] #[Title('Log in')] class extends Component
 
         <x-ui.button type="submit" class="w-full">Log in</x-ui.button>
 
-        <p class="text-center text-sm text-muted-foreground">
-            No account yet?
-            <a href="{{ route('register') }}" wire:navigate class="text-foreground underline underline-offset-4">Sign up</a>
-        </p>
+        @if (config('app.registration_enabled'))
+            <p class="text-center text-sm text-muted-foreground">
+                No account yet?
+                <a href="{{ route('register') }}" wire:navigate class="text-foreground underline underline-offset-4">Sign up</a>
+            </p>
+        @endif
     </form>
 </x-ui.card>

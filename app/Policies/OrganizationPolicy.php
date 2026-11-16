@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Policies;
+
+use App\Enums\OrganizationRole;
+use App\Models\Organization;
+use App\Models\User;
+
+class OrganizationPolicy
+{
+    public function view(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Viewer);
+    }
+
+    public function update(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+    }
+
+    public function manageMembers(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+    }
+
+    public function manageGithub(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+    }
+
+    public function delete(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Owner);
+    }
+}

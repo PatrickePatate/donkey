@@ -1,0 +1,65 @@
+x-app: &app
+  build:
+    context: ./docker/php
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+  image: donkey-php:8.5
+  volumes:
+    - .:/var/www/html
+  environment:
+    DB_HOST: pgsql
+    DB_PORT: 5432
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    REVERB_SERVER_HOST: 0.0.0.0
+  depends_on:
+    pgsql:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
+services:
+  app:
+    <<: *app
+    working_dir: /var/www/html/public
+    command: php -S 0.0.0.0:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+  horizon:
+    <<: *app
+    command: php artisan horizon
+
+  reverb:
+    <<: *app
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080 --debug
+    ports:
+      - "${REVERB_PORT:-8080}:8080"
+
+  pgsql:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: donkey
+      POSTGRES_USER: donkey
+      POSTGRES_PASSWORD: donkey
+    ports:
+      - "${FORWARD_DB_PORT:-5434}:5432"
+    volumes:
+      - pgsql-data:/var/lib/postgresql
+      - ./docker/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "donkey", "-d", "donkey"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${FORWARD_REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  pgsql-data:
+  redis-data:

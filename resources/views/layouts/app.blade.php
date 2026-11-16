@@ -31,7 +31,7 @@
         <div x-cloak x-show="sidebarOpen" x-on:click="sidebarOpen = false" class="fixed inset-0 z-30 bg-black/40 lg:hidden"></div>
 
         <aside
-            class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r bg-sidebar transition-transform lg:static lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r bg-sidebar transition-transform lg:sticky lg:top-0 lg:h-svh lg:translate-x-0"
             x-bind:class="sidebarOpen && 'translate-x-0'"
         >
             <div class="p-3">

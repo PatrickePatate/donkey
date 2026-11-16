@@ -63,6 +63,7 @@ new #[Title('Repositories')] class extends Component
         Gate::authorize('update', $repository);
 
         $repository->update(['auto_review_enabled' => $enabled]);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'repository.auto_review_changed', $repository, ['auto_review_enabled' => $enabled]);
 
         $this->dispatch('toast', message: "Auto-review updated for {$repository->full_name}.", variant: 'success');
     }
@@ -81,6 +82,7 @@ new #[Title('Repositories')] class extends Component
         }
 
         $repository->update(['risk_threshold' => $threshold]);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'repository.risk_threshold_changed', $repository, ['risk_threshold' => $threshold]);
 
         $this->dispatch('toast', message: "Risk threshold updated for {$repository->full_name}.", variant: 'success');
     }

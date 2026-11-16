@@ -45,6 +45,7 @@ new #[Title('Agents')] class extends Component
         Gate::authorize('update', $agent);
 
         $agent->update(['enabled' => $enabled]);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, $enabled ? 'agent.enabled' : 'agent.disabled', $agent);
         unset($this->agents);
 
         $this->dispatch('toast', message: $enabled ? "{$agent->name} enabled." : "{$agent->name} disabled.", variant: 'success');

@@ -26,6 +26,8 @@ use App\Services\Review\ReviewAnalyzer;
 use App\Services\Review\ReviewContext;
 use App\Services\Review\ReviewContextBuilder;
 use App\Services\Review\ReviewPublisher;
+use App\Services\Usage\UsageMeter;
+use App\Support\TransientFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -47,6 +49,11 @@ class ReviewPullRequest implements ShouldQueue
     public int $maxExceptions = 1;
 
     public int $timeout = 900;
+
+    /**
+     * How many times a run is retried when GitHub or the AI provider is rate limiting or overloaded.
+     */
+    private const MAX_TRANSIENT_ATTEMPTS = 6;
 
     public function __construct(public ReviewRun $run)
     {
@@ -72,6 +79,7 @@ class ReviewPullRequest implements ShouldQueue
         PullRequestClient $client,
         KnowledgeRetriever $knowledgeRetriever,
         SignalRecorder $signals,
+        UsageMeter $usage,
     ): void {
         $run = $this->run->fresh(['agent', 'pullRequest.repository.organization', 'pullRequest.repository.installation']);
 
@@ -93,6 +101,17 @@ class ReviewPullRequest implements ShouldQueue
             return;
         }
 
+        if ($usage->isOverBudget($pullRequest->repository->organization)) {
+            $this->finish($run, ReviewRunStatus::Skipped, 'The organization reached its monthly AI budget.');
+
+            if (! $run->is_dry_run) {
+                $run->update(['github_check_run_id' => $client->createCheckRun($pullRequest, config('reviews.check_run_name'), $run->head_sha, route('pull-requests.show', $pullRequest))]);
+                $this->completeCheck($client, $run, 'skipped', 'Monthly AI budget reached', 'Reviews resume next month, or when an owner raises the budget in Donkey.');
+            }
+
+            return;
+        }
+
         $run->update([
             'status' => ReviewRunStatus::Running,
             'started_at' => now(),
@@ -101,7 +120,10 @@ class ReviewPullRequest implements ShouldQueue
             'risk_threshold' => $pullRequest->repository->effectiveRiskThreshold(),
         ]);
 
-        if (! $run->is_dry_run) {
+        // A retry after GitHub or the AI provider pushed back starts the analysis over.
+        $run->findings()->delete();
+
+        if (! $run->is_dry_run && $run->github_check_run_id === null) {
             $checkRunName = config('reviews.check_run_name').($run->agent !== null ? " · {$run->agent->name}" : '');
             $checkRunId = $client->createCheckRun($pullRequest, $checkRunName, $run->head_sha, route('pull-requests.show', ['pullRequest' => $pullRequest, 'run' => $run->id]));
             $run->update(['github_check_run_id' => $checkRunId]);
@@ -195,6 +217,16 @@ class ReviewPullRequest implements ShouldQueue
                 "Reviewed {$run->files_reviewed} ".str('file')->plural($run->files_reviewed)." · risk score {$run->risk_score}/100.",
             );
         } catch (Throwable $exception) {
+            $delay = TransientFailure::backoff($exception, $this->attempts());
+
+            if ($delay !== null && $this->attempts() < self::MAX_TRANSIENT_ATTEMPTS) {
+                $run->update(['status' => ReviewRunStatus::Queued, 'stage' => null, 'error' => null]);
+                ReviewRunUpdated::dispatch($run);
+                $this->release($delay);
+
+                return;
+            }
+
             report($exception);
 
             $this->finish($run, ReviewRunStatus::Failed, $exception->getMessage());

@@ -28,6 +28,19 @@ class OrganizationPolicy
         return $user->hasRoleIn($organization, OrganizationRole::Admin);
     }
 
+    /**
+     * Spend, budgets and cost per repository are for owners only.
+     */
+    public function viewUsage(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Owner);
+    }
+
+    public function viewAudit(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+    }
+
     public function delete(User $user, Organization $organization): bool
     {
         return $user->hasRoleIn($organization, OrganizationRole::Owner);

@@ -203,12 +203,14 @@ new class extends Component
 
         if ($this->agent !== null) {
             $this->agent->update($attributes);
+            app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'agent.updated', $this->agent, App\Services\Audit\AuditLog::changes($this->agent, ['name', 'slug', 'instructions', 'model', 'repository_id', 'file_globs', 'categories', 'severity_floor', 'run_on_auto_review', 'enabled']));
             $this->dispatch('toast', message: 'Agent saved.', variant: 'success');
 
             return;
         }
 
         $agent = $this->organization->reviewAgents()->create($attributes);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'agent.created', $agent, ['slug' => $agent->slug]);
 
         session()->flash('success', "{$agent->name} agent created.");
         $this->redirectRoute('agents.edit', $agent, navigate: true);
@@ -219,6 +221,7 @@ new class extends Component
         Gate::authorize('delete', $this->agent);
 
         $name = $this->agent->name;
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'agent.deleted', metadata: ['slug' => $this->agent->slug, 'name' => $name]);
         $this->agent->delete();
 
         session()->flash('success', "{$name} agent deleted.");

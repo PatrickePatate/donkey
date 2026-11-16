@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Ai\Agents\LearningSynthesizer;
+use App\Enums\AiFeature;
 use App\Enums\ConversationRole;
 use App\Enums\FindingCategory;
 use App\Enums\LearningKind;
@@ -11,6 +12,7 @@ use App\Enums\SignalType;
 use App\Models\FindingSignal;
 use App\Models\Learning;
 use App\Models\Repository;
+use App\Services\Usage\UsageMeter;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -55,7 +57,7 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
         return ((int) config('learning.synthesis.delay_minutes') + 10) * 60;
     }
 
-    public function handle(): void
+    public function handle(UsageMeter $usage): void
     {
         $repository = $this->repository->fresh('organization');
 
@@ -74,7 +76,7 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
 
         $strong = $signals->filter(fn (FindingSignal $signal): bool => $signal->type->isStrongNegative());
 
-        if ($strong->isEmpty() && $signals->count() < self::MIN_WEAK_SIGNALS) {
+        if (($strong->isEmpty() && $signals->count() < self::MIN_WEAK_SIGNALS) || $usage->isOverBudget($repository->organization)) {
             return;
         }
 
@@ -91,6 +93,8 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
             model: config('learning.synthesis.model'),
             timeout: 180,
         );
+
+        $usage->record($repository->organization, AiFeature::Learning, config('reviews.provider'), config('learning.synthesis.model'), $response->usage, $repository);
 
         $findingIds = $signals->pluck('review_finding_id')->unique()->values();
 

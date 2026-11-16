@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\SyncInstallationRepositories;
 use App\Models\GithubInstallation;
 use App\Models\Organization;
+use App\Services\Audit\AuditLog;
 use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubUserAuthorization;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Gate;
  */
 class SetupController extends Controller
 {
-    public function __invoke(Request $request, GitHubApp $github, GitHubUserAuthorization $userAuthorization): RedirectResponse
+    public function __invoke(Request $request, GitHubApp $github, GitHubUserAuthorization $userAuthorization, AuditLog $audit): RedirectResponse
     {
         $validated = $request->validate([
             'installation_id' => ['required', 'integer'],
@@ -75,6 +76,7 @@ class SetupController extends Controller
         );
 
         SyncInstallationRepositories::dispatch($installation);
+        $audit->record($organization, 'github.connected', $installation, ['account' => $installation->account_login]);
 
         return redirect()->route('repositories.index')
             ->with('success', "Connected {$installation->account_login}. Repositories are syncing…");

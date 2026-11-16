@@ -1,0 +1,21 @@
+{
+  "name": "sql-injection",
+  "title": "Add invoice search",
+  "description": "Lets accountants search invoices by customer name.",
+  "files": [
+    {
+      "path": "app/Http/Controllers/InvoiceSearchController.php",
+      "status": "added",
+      "patch": "@@ -0,0 +1,16 @@\n+<?php\n+\n+namespace App\\Http\\Controllers;\n+\n+use Illuminate\\Http\\Request;\n+use Illuminate\\Support\\Facades\\DB;\n+\n+class InvoiceSearchController extends Controller\n+{\n+    public function __invoke(Request $request)\n+    {\n+        $name = $request->input('customer');\n+\n+        return DB::select(\"select * from invoices where customer_name like '%$name%'\");\n+    }\n+}"
+    }
+  ],
+  "expected": [
+    {
+      "file": "app/Http/Controllers/InvoiceSearchController.php",
+      "start_line": 14,
+      "end_line": 14,
+      "category": "security",
+      "severity": "critical"
+    }
+  ]
+}

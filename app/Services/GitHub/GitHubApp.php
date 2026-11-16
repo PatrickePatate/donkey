@@ -5,6 +5,7 @@ namespace App\Services\GitHub;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -134,8 +135,39 @@ class GitHubApp
             ->acceptJson()
             ->withHeaders(['X-GitHub-Api-Version' => '2022-11-28'])
             ->timeout(20)
-            ->retry(2, 500, fn (Throwable $exception): bool => $exception instanceof ConnectionException
-                || ($exception instanceof RequestException && ($exception->response->serverError() || $exception->response->status() === 429)), throw: false);
+            ->retry(3, fn (int $attempt, Throwable $exception): int => self::retryDelay($attempt, $exception), fn (Throwable $exception): bool => $exception instanceof ConnectionException
+                || ($exception instanceof RequestException && ($exception->response->serverError() || self::isRateLimited($exception->response))), throw: false);
+    }
+
+    /**
+     * Primary (429, or 403 with no requests left) and secondary rate limits, which GitHub reports as a 403.
+     */
+    public static function isRateLimited(Response $response): bool
+    {
+        return $response->status() === 429
+            || ($response->status() === 403 && (
+                $response->header('X-RateLimit-Remaining') === '0'
+                || $response->header('Retry-After') !== ''
+                || str_contains(strtolower($response->body()), 'secondary rate limit')
+            ));
+    }
+
+    /**
+     * Honour Retry-After (or the rate-limit reset time) up to 30 seconds; beyond that the job is released instead.
+     */
+    public static function retryDelay(int $attempt, Throwable $exception): int
+    {
+        if ($exception instanceof RequestException) {
+            $retryAfter = (int) $exception->response->header('Retry-After');
+            $reset = (int) $exception->response->header('X-RateLimit-Reset');
+            $seconds = $retryAfter > 0 ? $retryAfter : ($reset > 0 ? $reset - time() : 0);
+
+            if ($seconds > 0) {
+                return min(30, $seconds) * 1000;
+            }
+        }
+
+        return 500 * $attempt;
     }
 
     private function privateKey(): string

@@ -1,0 +1,21 @@
+{
+  "name": "n-plus-one",
+  "title": "Show order totals per customer",
+  "description": "Lists customers with the total of their orders.",
+  "files": [
+    {
+      "path": "app/Http/Controllers/CustomerTotalsController.php",
+      "status": "added",
+      "patch": "@@ -0,0 +1,22 @@\n+<?php\n+\n+namespace App\\Http\\Controllers;\n+\n+use App\\Models\\Customer;\n+\n+class CustomerTotalsController extends Controller\n+{\n+    public function index()\n+    {\n+        $rows = [];\n+\n+        foreach (Customer::all() as $customer) {\n+            $rows[] = [\n+                'name' => $customer->name,\n+                'total' => $customer->orders()->sum('amount'),\n+            ];\n+        }\n+\n+        return view('customers.totals', ['rows' => $rows]);\n+    }\n+}"
+    }
+  ],
+  "expected": [
+    {
+      "file": "app/Http/Controllers/CustomerTotalsController.php",
+      "start_line": 13,
+      "end_line": 16,
+      "category": "performance",
+      "severity": "medium"
+    }
+  ]
+}

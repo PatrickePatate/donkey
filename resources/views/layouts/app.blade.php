@@ -12,6 +12,14 @@
         ['label' => 'Organization', 'route' => 'settings.organization', 'icon' => 'settings'],
         ['label' => 'Members', 'route' => 'settings.members', 'icon' => 'users'],
     ];
+
+    if ($organization && $user->can('viewUsage', $organization)) {
+        $settings[] = ['label' => 'Usage & cost', 'route' => 'settings.usage', 'icon' => 'activity'];
+    }
+
+    if ($organization && $user->can('viewAudit', $organization)) {
+        $settings[] = ['label' => 'Audit log', 'route' => 'settings.audit', 'icon' => 'shield'];
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">

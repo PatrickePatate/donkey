@@ -52,6 +52,7 @@ new #[Title('Members')] class extends Component
         ]);
 
         $inviteMember->handle($this->organization, auth()->user(), $this->inviteEmail, OrganizationRole::from($this->inviteRole));
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'member.invited', metadata: ['email' => $this->inviteEmail, 'role' => $this->inviteRole]);
 
         $this->dispatch('toast', message: "Invitation sent to {$this->inviteEmail}.", variant: 'success');
         $this->dispatch('close-dialog');
@@ -84,6 +85,7 @@ new #[Title('Members')] class extends Component
         }
 
         $this->organization->members()->updateExistingPivot($member->id, ['role' => $newRole->value]);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'member.role_changed', $member, ['role' => [$currentRole->value, $newRole->value]]);
         $this->dispatch('toast', message: "{$member->name} is now {$newRole->label()}.", variant: 'success');
     }
 
@@ -109,6 +111,7 @@ new #[Title('Members')] class extends Component
         }
 
         $this->organization->members()->detach($member->id);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, $isSelf ? 'member.left' : 'member.removed', $member, ['email' => $member->email]);
 
         if ($member->current_organization_id === $this->organization->id) {
             $member->forceFill(['current_organization_id' => null])->save();
@@ -128,6 +131,7 @@ new #[Title('Members')] class extends Component
         Gate::authorize('manageMembers', $this->organization);
 
         $this->organization->invitations()->whereKey($invitationId)->delete();
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'member.invitation_revoked', metadata: ['invitation_id' => $invitationId]);
         $this->dispatch('toast', message: 'Invitation revoked.');
     }
 

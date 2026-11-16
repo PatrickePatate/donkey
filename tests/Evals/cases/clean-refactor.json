@@ -1,0 +1,18 @@
+{
+  "name": "clean-refactor",
+  "title": "Extract money formatting helper",
+  "description": "Moves money formatting into a tested helper. No behaviour change.",
+  "files": [
+    {
+      "path": "app/Support/Money.php",
+      "status": "added",
+      "patch": "@@ -0,0 +1,14 @@\n+<?php\n+\n+namespace App\\Support;\n+\n+final class Money\n+{\n+    /**\n+     * Format an amount in cents, e.g. 12345 => \"123.45\".\n+     */\n+    public static function format(int $cents): string\n+    {\n+        return number_format($cents / 100, 2, '.', '');\n+    }\n+}"
+    },
+    {
+      "path": "tests/Unit/MoneyTest.php",
+      "status": "added",
+      "patch": "@@ -0,0 +1,8 @@\n+<?php\n+\n+use App\\Support\\Money;\n+\n+it('formats cents', function () {\n+    expect(Money::format(12345))->toBe('123.45')\n+        ->and(Money::format(0))->toBe('0.00');\n+});"
+    }
+  ],
+  "expected": []
+}

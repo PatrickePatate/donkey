@@ -3,11 +3,13 @@
 namespace App\Services\Review;
 
 use App\Ai\Agents\FindingVerifier;
+use App\Enums\AiFeature;
 use App\Enums\FindingSeverity;
 use App\Enums\FindingVerification;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Knowledge\ReviewKnowledge;
+use App\Services\Usage\UsageMeter;
 use Throwable;
 
 /**
@@ -19,7 +21,7 @@ class FindingVerifierService
 
     public int $outputTokens = 0;
 
-    public function __construct(private PullRequestClient $client) {}
+    public function __construct(private PullRequestClient $client, private UsageMeter $usage) {}
 
     /**
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
@@ -46,6 +48,15 @@ class FindingVerifierService
 
         $this->inputTokens += $response->usage->inputTokens;
         $this->outputTokens += $response->usage->outputTokens;
+
+        $this->usage->record(
+            $run->pullRequest->repository->organization,
+            AiFeature::Verification,
+            config('reviews.provider'),
+            config('reviews.verifier.model'),
+            $response->usage,
+            pullRequest: $run->pullRequest,
+        );
 
         $verdicts = [];
 

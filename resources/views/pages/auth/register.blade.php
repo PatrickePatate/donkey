@@ -37,7 +37,7 @@ new #[Layout('layouts::guest')] #[Title('Sign up')] class extends Component
         Auth::login($user);
         session()->regenerate();
 
-        $this->redirectIntended(route('organizations.create'), navigate: true);
+        $this->redirectIntended(route('verification.notice'), navigate: true);
     }
 };
 ?>

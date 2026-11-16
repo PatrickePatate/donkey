@@ -31,5 +31,6 @@ Artisan::command('learnings:decay', function (DecayLearnings $decay) {
     $this->info("Decayed {$result['decayed']} idle ".str('learning')->plural($result['decayed']).", archived {$result['archived']}.");
 })->purpose('Lower the weight of learnings that stopped matching, and archive the weakest');
 
+Schedule::command('model:prune')->dailyAt('02:30');
 Schedule::command('learnings:propose')->dailyAt('03:00');
 Schedule::command('learnings:decay')->dailyAt('03:30');

@@ -3,18 +3,23 @@
 namespace App\Services\Review;
 
 use App\Ai\Agents\CodeReviewer;
+use App\Enums\AiFeature;
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
+use App\Models\Organization;
 use App\Models\PullRequest;
 use App\Models\ReviewAgent;
 use App\Services\Graph\GraphContext;
 use App\Services\Knowledge\ReviewKnowledge;
+use App\Services\Usage\UsageMeter;
 
 /**
  * Runs the reviewer over each chunk of the diff and keeps only findings that point at real diff lines.
  */
 class ReviewAnalyzer
 {
+    public function __construct(private UsageMeter $usage) {}
+
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
      */
@@ -37,6 +42,17 @@ class ReviewAnalyzer
 
             $inputTokens += $response->usage->inputTokens;
             $outputTokens += $response->usage->outputTokens;
+
+            if ($meter = $this->meteredOrganization($pullRequest)) {
+                $this->usage->record(
+                    $meter,
+                    $agent !== null ? AiFeature::Agent : AiFeature::Review,
+                    config('reviews.provider'),
+                    filled($agent?->model) ? $agent->model : config('reviews.model'),
+                    $response->usage,
+                    pullRequest: $pullRequest,
+                );
+            }
             $riskScore = max($riskScore, (int) ($response['risk_score'] ?? 0));
 
             if (filled($response['summary'] ?? null)) {
@@ -174,5 +190,13 @@ class ReviewAnalyzer
         $sections[] = '</diff>';
 
         return implode("\n\n", $sections);
+    }
+
+    /**
+     * Pull requests built in memory (e.g. by the evaluation harness) belong to no organization and are not metered.
+     */
+    private function meteredOrganization(PullRequest $pullRequest): ?Organization
+    {
+        return $pullRequest->exists ? $pullRequest->repository->organization : null;
     }
 }

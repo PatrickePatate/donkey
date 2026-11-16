@@ -139,6 +139,7 @@ new #[Title('Knowledge')] class extends Component
             'weight' => max(1, $learning->weight),
         ]);
 
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'learning.approved', $learning, ['body' => $learning->body]);
         $this->refreshLearnings();
         $this->dispatch('toast', message: 'Learning approved. Reviews use it from now on.', variant: 'success');
     }
@@ -150,6 +151,7 @@ new #[Title('Knowledge')] class extends Component
 
         $learning->update(['status' => LearningStatus::Rejected, 'reviewed_by' => auth()->id(), 'reviewed_at' => now()]);
 
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'learning.rejected', $learning, ['body' => $learning->body]);
         $this->refreshLearnings();
         $this->dispatch('toast', message: 'Learning rejected. It will not be proposed again.', variant: 'success');
     }
@@ -160,6 +162,7 @@ new #[Title('Knowledge')] class extends Component
         Gate::authorize('update', $learning);
 
         $learning->update(['status' => $learning->status === LearningStatus::Archived ? LearningStatus::Active : LearningStatus::Archived, 'weight' => max(1, $learning->weight)]);
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, $learning->status === LearningStatus::Archived ? 'learning.archived' : 'learning.reactivated', $learning);
 
         $this->refreshLearnings();
     }
@@ -201,6 +204,7 @@ new #[Title('Knowledge')] class extends Component
             'path_glob' => filled($validated['learningPathGlob']) ? trim($validated['learningPathGlob']) : null,
         ]);
 
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'learning.updated', $learning, App\Services\Audit\AuditLog::changes($learning));
         $this->editingLearningId = null;
         $this->refreshLearnings();
         $this->dispatch('close-dialog');
@@ -247,6 +251,7 @@ new #[Title('Knowledge')] class extends Component
         $memory = $this->findMemory($memoryId);
         Gate::authorize('delete', $memory);
 
+        app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'memory.deleted', metadata: ['repository' => $memory->repository->full_name, 'body' => $memory->body]);
         $memory->delete();
         unset($this->memories, $this->counts);
         $this->dispatch('toast', message: 'Memory deleted.', variant: 'success');

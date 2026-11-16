@@ -151,7 +151,7 @@ it('learns from a dismissed false positive so the next similar pull request stay
         'body' => 'Interpolated SQL in Billing uses typed ids only; do not flag it as injection.',
         'rationale' => 'Dismissed by grace.', 'finding_ids' => [$dismissed->id], 'reinforces' => 0,
     ]]]]);
-    (new ProposeLearnings($this->repository))->handle();
+    app()->call([new ProposeLearnings($this->repository), 'handle']);
 
     $learning = Learning::sole();
     expect($learning->status)->toBe(LearningStatus::Proposed);

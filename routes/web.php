@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\GitHub\InstallController;
 use App\Http\Controllers\GitHub\SetupController;
 use App\Http\Controllers\GitHub\WebhookController;
@@ -22,6 +23,8 @@ Route::livewire('/invitations/{token}', 'pages::invitations.accept')->name('invi
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', LogoutController::class)->name('logout');
+    Route::livewire('/email/verify', 'pages::auth.verify-email')->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', VerifyEmailController::class)->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
     Route::livewire('/organizations/create', 'pages::organizations.create')->name('organizations.create');
     Route::put('/organizations/{organization}/switch', SwitchOrganizationController::class)->name('organizations.switch');
 
@@ -36,6 +39,8 @@ Route::middleware('auth')->group(function () {
         Route::livewire('/agents/{agent}/edit', 'pages::agents.edit')->name('agents.edit');
         Route::livewire('/settings/organization', 'pages::settings.organization')->name('settings.organization');
         Route::livewire('/settings/members', 'pages::settings.members')->name('settings.members');
+        Route::livewire('/settings/usage', 'pages::settings.usage')->name('settings.usage');
+        Route::livewire('/settings/audit', 'pages::settings.audit')->name('settings.audit');
 
         Route::get('/github/install', InstallController::class)->name('github.install');
         Route::get('/github/setup', SetupController::class)->name('github.setup');

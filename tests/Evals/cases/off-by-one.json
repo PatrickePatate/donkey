@@ -1,0 +1,21 @@
+{
+  "name": "off-by-one",
+  "title": "Paginate the activity feed",
+  "description": "Splits the activity feed into pages.",
+  "files": [
+    {
+      "path": "resources/js/paginate.js",
+      "status": "added",
+      "patch": "@@ -0,0 +1,9 @@\n+export function paginate(items, page, perPage) {\n+    const pages = [];\n+\n+    for (let i = 0; i <= items.length; i += perPage) {\n+        pages.push(items.slice(i, i + perPage));\n+    }\n+\n+    return pages[page - 1] ?? [];\n+}"
+    }
+  ],
+  "expected": [
+    {
+      "file": "resources/js/paginate.js",
+      "start_line": 4,
+      "end_line": 5,
+      "category": "bug",
+      "severity": "low"
+    }
+  ]
+}

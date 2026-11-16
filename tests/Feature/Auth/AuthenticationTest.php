@@ -10,7 +10,7 @@ it('registers a user and sends them to create an organization', function () {
         ->set('password', 'correct-horse-battery')
         ->set('password_confirmation', 'correct-horse-battery')
         ->call('register')
-        ->assertRedirect(route('organizations.create'));
+        ->assertRedirect(route('verification.notice'));
 
     $this->assertAuthenticated();
     expect(User::where('email', 'ada@example.com')->exists())->toBeTrue();

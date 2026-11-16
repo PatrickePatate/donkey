@@ -10,7 +10,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'bot_handle'])]
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $slug
+ * @property int $risk_threshold
+ * @property bool $auto_review_default
+ * @property string $bot_handle
+ * @property ?int $monthly_budget_cents
+ * @property ?list<string> $auto_join_domains
+ * @property OrganizationRole $auto_join_role
+ */
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -21,6 +32,9 @@ class Organization extends Model
         return [
             'risk_threshold' => 'integer',
             'auto_review_default' => 'boolean',
+            'monthly_budget_cents' => 'integer',
+            'auto_join_domains' => 'array',
+            'auto_join_role' => OrganizationRole::class,
         ];
     }
 
@@ -49,6 +63,22 @@ class Organization extends Model
     public function githubInstallations(): HasMany
     {
         return $this->hasMany(GithubInstallation::class);
+    }
+
+    /**
+     * @return HasMany<AiUsage, $this>
+     */
+    public function aiUsages(): HasMany
+    {
+        return $this->hasMany(AiUsage::class);
+    }
+
+    /**
+     * @return HasMany<AuditEvent, $this>
+     */
+    public function auditEvents(): HasMany
+    {
+        return $this->hasMany(AuditEvent::class);
     }
 
     /**

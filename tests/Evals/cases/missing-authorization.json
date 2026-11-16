@@ -1,0 +1,21 @@
+{
+  "name": "missing-authorization",
+  "title": "Allow editing project settings",
+  "description": "Adds an endpoint to update a project's settings.",
+  "files": [
+    {
+      "path": "app/Http/Controllers/ProjectSettingsController.php",
+      "status": "added",
+      "patch": "@@ -0,0 +1,16 @@\n+<?php\n+\n+namespace App\\Http\\Controllers;\n+\n+use App\\Models\\Project;\n+use Illuminate\\Http\\Request;\n+\n+class ProjectSettingsController extends Controller\n+{\n+    public function update(Request $request, Project $project)\n+    {\n+        $project->update($request->all());\n+\n+        return back();\n+    }\n+}"
+    }
+  ],
+  "expected": [
+    {
+      "file": "app/Http/Controllers/ProjectSettingsController.php",
+      "start_line": 10,
+      "end_line": 12,
+      "category": "security",
+      "severity": "high"
+    }
+  ]
+}

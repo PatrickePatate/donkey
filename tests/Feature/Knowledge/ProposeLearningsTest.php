@@ -51,7 +51,7 @@ it('proposes learnings from dismissed findings and their explanations', function
         ],
     ]]]);
 
-    (new ProposeLearnings($this->repository))->handle();
+    app()->call([new ProposeLearnings($this->repository), 'handle']);
 
     $learning = Learning::sole();
 
@@ -80,7 +80,7 @@ it('reinforces an existing learning instead of duplicating it, and never revives
         ['kind' => 'false_positive', 'scope' => 'repository', 'category' => '', 'path_glob' => '', 'body' => 'Same as rejected.', 'rationale' => '', 'finding_ids' => [$finding->id], 'reinforces' => $rejected->id],
     ]]]);
 
-    (new ProposeLearnings($this->repository))->handle();
+    app()->call([new ProposeLearnings($this->repository), 'handle']);
 
     expect(Learning::count())->toBe(2)
         ->and($active->fresh())
@@ -97,7 +97,7 @@ it('waits for more evidence when findings were only merged untouched', function 
     dismissedFinding($this, type: SignalType::IgnoredOnMerge);
     dismissedFinding($this, type: SignalType::IgnoredOnMerge);
 
-    (new ProposeLearnings($this->repository))->handle();
+    app()->call([new ProposeLearnings($this->repository), 'handle']);
 
     LearningSynthesizer::assertNeverPrompted();
     expect(FindingSignal::whereNull('processed_at')->count())->toBe(2);

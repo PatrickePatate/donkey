@@ -3,12 +3,15 @@
 namespace App\Jobs;
 
 use App\Ai\Agents\PullRequestAssistant;
+use App\Enums\AiFeature;
 use App\Enums\ConversationRole;
 use App\Enums\ConversationStatus;
 use App\Events\ConversationUpdated;
 use App\Models\ConversationMessage;
 use App\Services\Conversation\AssistantPromptBuilder;
 use App\Services\Conversation\CommentResponder;
+use App\Services\Usage\UsageMeter;
+use App\Support\TransientFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -21,9 +24,9 @@ class AnswerPullRequestComment implements ShouldQueue
     use Queueable;
 
     /**
-     * A failed answer is reported in the thread instead of being retried, so nobody gets two answers.
+     * Rate limits and overloads are retried; any other failure is reported in the thread once, so nobody gets two answers.
      */
-    public int $tries = 1;
+    public int $tries = 4;
 
     public int $timeout = 300;
 
@@ -32,7 +35,7 @@ class AnswerPullRequestComment implements ShouldQueue
         $this->onQueue('conversations');
     }
 
-    public function handle(AssistantPromptBuilder $prompts, CommentResponder $responder): void
+    public function handle(AssistantPromptBuilder $prompts, CommentResponder $responder, UsageMeter $usage): void
     {
         $question = $this->question->fresh(['pullRequest.repository.organization', 'pullRequest.repository.installation', 'finding']);
 
@@ -42,6 +45,16 @@ class AnswerPullRequestComment implements ShouldQueue
 
         $pullRequest = $question->pullRequest;
         $handle = $pullRequest->repository->organization->bot_handle;
+
+        $organization = $pullRequest->repository->organization;
+
+        if ($usage->isOverBudget($organization)) {
+            $responder->reply($pullRequest, $question->thread_comment_id, "{$organization->name} reached its monthly AI budget, so I can't answer until next month or until an owner raises it.", $question->isInThread() ? null : $question->author_login);
+            $question->update(['status' => ConversationStatus::Failed]);
+            ConversationUpdated::dispatch($pullRequest);
+
+            return;
+        }
 
         try {
             $response = PullRequestAssistant::make(handle: $handle)->prompt(
@@ -53,7 +66,16 @@ class AnswerPullRequestComment implements ShouldQueue
 
             $answer = trim($response->text);
             $tokens = [$response->usage->inputTokens, $response->usage->outputTokens];
+            $usage->record($organization, AiFeature::Conversation, config('reviews.provider'), config('reviews.conversation.model'), $response->usage, pullRequest: $pullRequest);
         } catch (Throwable $exception) {
+            $delay = TransientFailure::backoff($exception, $this->attempts());
+
+            if ($delay !== null && $this->attempts() < $this->tries) {
+                $this->release($delay);
+
+                return;
+            }
+
             report($exception);
 
             $answer = null;

@@ -6,7 +6,9 @@ use App\Enums\ConversationRole;
 use App\Enums\ConversationStatus;
 use Database\Factories\ConversationMessageFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -37,7 +39,7 @@ use Illuminate\Support\Carbon;
 class ConversationMessage extends Model
 {
     /** @use HasFactory<ConversationMessageFactory> */
-    use HasFactory;
+    use HasFactory, MassPrunable;
 
     protected function casts(): array
     {
@@ -78,5 +80,15 @@ class ConversationMessage extends Model
     public function isInThread(): bool
     {
         return $this->thread_comment_id !== null;
+    }
+
+    /**
+     * Old records are deleted by the scheduled "model:prune"; see config/retention.php.
+     *
+     * @return Builder<static>
+     */
+    public function prunable(): Builder
+    {
+        return static::query()->where('created_at', '<', now()->subDays((int) config('retention.conversation_days')));
     }
 }

@@ -20,6 +20,12 @@ class RepositoryFactory extends Factory
             'full_name' => fake()->userName().'/'.fake()->unique()->slug(2),
             'default_branch' => 'main',
             'is_private' => true,
+            'auto_docs_enabled' => false,
         ];
+    }
+
+    public function autoDocs(): static
+    {
+        return $this->state(fn (): array => ['auto_docs_enabled' => true]);
     }
 }

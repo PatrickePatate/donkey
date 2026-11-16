@@ -1,0 +1,21 @@
+{
+    "name": "regression-removed-transaction",
+    "title": "Inline the transfer",
+    "description": "Removes the DB::transaction wrapper.",
+    "files": [
+        {
+            "path": "app/Actions/TransferStock.php",
+            "status": "modified",
+            "patch": "@@ -1,7 +1,5 @@\n public function handle(Warehouse $from, Warehouse $to, int $quantity): void\n {\n-    DB::transaction(function () use ($from, $to, $quantity): void {\n-        $from->decrement('stock', $quantity);\n-        $to->increment('stock', $quantity);\n-    });\n+    $from->decrement('stock', $quantity);\n+    $to->increment('stock', $quantity);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Actions/TransferStock.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

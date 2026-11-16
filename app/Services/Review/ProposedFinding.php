@@ -36,6 +36,21 @@ final class ProposedFinding
     }
 
     /**
+     * Whether a confirmed verdict publishes this finding regardless of its risk score.
+     */
+    public function passesCorrectnessGate(): bool
+    {
+        if (! config('reviews.correctness_gate.enabled') || ! $this->category->isCorrectness()) {
+            return false;
+        }
+
+        $floor = FindingSeverity::tryFrom((string) config('reviews.correctness_gate.min_severity')) ?? FindingSeverity::Medium;
+
+        return $this->severity->weight() >= $floor->weight()
+            && $this->confidence >= (int) config('reviews.correctness_gate.min_confidence');
+    }
+
+    /**
      * Copy with structural impact from the code graph.
      */
     public function withImpact(?string $symbol, ?int $callers, float $boost): self

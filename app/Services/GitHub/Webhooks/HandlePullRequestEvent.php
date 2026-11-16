@@ -8,6 +8,7 @@ use App\Enums\ReviewTrigger;
 use App\Enums\WebhookEventStatus;
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\CollectFindingFeedback;
+use App\Jobs\GenerateRepositoryDocumentation;
 use App\Models\GithubInstallation;
 use App\Models\WebhookEvent;
 
@@ -52,6 +53,10 @@ class HandlePullRequestEvent
 
         if ($event->action === 'closed' && $pullRequest->state === 'merged' && $pullRequest->base_ref === $repository->default_branch && is_string($mergeCommit)) {
             BuildRepositoryGraph::dispatch($repository, $mergeCommit);
+
+            if ($repository->auto_docs_enabled) {
+                GenerateRepositoryDocumentation::dispatchFor($repository);
+            }
         }
 
         return WebhookEventStatus::Processed;

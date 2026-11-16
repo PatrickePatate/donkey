@@ -151,7 +151,7 @@ class RunEvaluations extends Command
             }
         }
 
-        $posted = array_filter($findings, fn (ProposedFinding $finding): bool => $finding->riskScore() >= $threshold);
+        $posted = array_filter($findings, fn (ProposedFinding $finding): bool => $finding->riskScore() >= $threshold || $finding->passesCorrectnessGate());
 
         return [
             'expected' => count($expected),

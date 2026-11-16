@@ -1,0 +1,33 @@
+{
+    "name": "regression-nullable-return",
+    "title": "Avoid exceptions when the user is missing",
+    "description": "Returns null instead of throwing.",
+    "files": [
+        {
+            "path": "app/Repositories/UserRepository.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n-public function find(int $id): User\n+public function find(int $id): ?User\n {\n-    return User::findOrFail($id);\n+    return User::find($id);\n }"
+        },
+        {
+            "path": "app/Http/Controllers/ProfileController.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function show(int $id): View\n {\n     return view('profile', ['name' => $this->users->find($id)->name]);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Repositories/UserRepository.php",
+            "start_line": 1,
+            "end_line": 1,
+            "category": "regression",
+            "severity": "medium"
+        },
+        {
+            "file": "app/Http/Controllers/ProfileController.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

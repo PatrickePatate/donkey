@@ -22,8 +22,14 @@ class OrganizationFactory extends Factory
             'slug' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'risk_threshold' => 50,
             'auto_review_default' => true,
+            'eco_mode' => false,
             'bot_handle' => 'donkey',
         ];
+    }
+
+    public function ecoMode(): static
+    {
+        return $this->state(['eco_mode' => true]);
     }
 
     /**

@@ -1,0 +1,33 @@
+{
+    "name": "regression-units-change",
+    "title": "Store durations in milliseconds",
+    "description": "Uses milliseconds for precision.",
+    "files": [
+        {
+            "path": "app/Support/Timeout.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public static function forUpload(): int\n {\n-    return 30;\n+    return 30_000;\n }"
+        },
+        {
+            "path": "app/Services/Uploader.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function client(): PendingRequest\n {\n     return Http::timeout(Timeout::forUpload());\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Support/Timeout.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        },
+        {
+            "file": "app/Services/Uploader.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

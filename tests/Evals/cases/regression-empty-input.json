@@ -1,0 +1,21 @@
+{
+    "name": "regression-empty-input",
+    "title": "Compute averages inline",
+    "description": "Removes the Stats helper.",
+    "files": [
+        {
+            "path": "app/Services/Reports.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function averageOrderValue(Collection $orders): float\n {\n-    return $orders->isEmpty() ? 0.0 : $orders->avg('total');\n+    return $orders->sum('total') / $orders->count();\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/Reports.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

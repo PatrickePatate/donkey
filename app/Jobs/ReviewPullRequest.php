@@ -296,6 +296,8 @@ class ReviewPullRequest implements ShouldQueue
 
         $decisions = [];
         $candidates = [];
+        $gated = [];
+        $verifierEnabled = (bool) config('reviews.verifier.enabled');
 
         foreach ($analysis->findings as $index => $finding) {
             $status = match (true) {
@@ -305,14 +307,18 @@ class ReviewPullRequest implements ShouldQueue
                 default => FindingStatus::Suppressed,
             };
 
+            if ($status === FindingStatus::Suppressed && $verifierEnabled && $finding->passesCorrectnessGate()) {
+                $gated[$index] = true;
+            }
+
             $decisions[$index] = ['finding' => $finding, 'status' => $status, 'verification' => null, 'note' => null, 'learning_id' => null];
 
-            if ($status === FindingStatus::Published) {
+            if ($status === FindingStatus::Published || isset($gated[$index])) {
                 $candidates[$index] = $finding;
             }
         }
 
-        if ($candidates === [] || ! config('reviews.verifier.enabled')) {
+        if ($candidates === [] || ! $verifierEnabled) {
             return array_values($decisions);
         }
 
@@ -323,6 +329,7 @@ class ReviewPullRequest implements ShouldQueue
 
             if ($verdict === null) {
                 $decisions[$index]['verification'] = FindingVerification::Skipped;
+                $decisions[$index]['status'] = isset($gated[$index]) ? FindingStatus::Suppressed : $decisions[$index]['status'];
 
                 continue;
             }
@@ -339,7 +346,9 @@ class ReviewPullRequest implements ShouldQueue
 
             $assessed = $finding->withAssessment($verdict->severity ?? $finding->severity, $verdict->confidence ?? $finding->confidence);
             $decisions[$index]['finding'] = $assessed;
-            $decisions[$index]['status'] = $assessed->riskScore() >= $run->risk_threshold ? FindingStatus::Published : FindingStatus::Suppressed;
+            $publishes = $assessed->riskScore() >= $run->risk_threshold
+                || ($verdict->verification === FindingVerification::Confirmed && $assessed->passesCorrectnessGate());
+            $decisions[$index]['status'] = $publishes ? FindingStatus::Published : FindingStatus::Suppressed;
         }
 
         return array_values($decisions);

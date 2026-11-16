@@ -1,0 +1,13 @@
+{
+    "name": "clean-rename-local-variable",
+    "title": "Rename a local variable",
+    "description": "Pure rename.",
+    "files": [
+        {
+            "path": "app/Services/Reports.php",
+            "status": "modified",
+            "patch": "@@ -1,6 +1,6 @@\n public function revenue(Collection $orders): int\n {\n-    $t = $orders->sum('total');\n+    $total = $orders->sum('total');\n \n-    return $t;\n+    return $total;\n }"
+        }
+    ],
+    "expected": []
+}

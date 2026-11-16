@@ -1,0 +1,13 @@
+{
+    "name": "clean-extract-method",
+    "title": "Extract a guard method",
+    "description": "Behaviour-preserving refactor.",
+    "files": [
+        {
+            "path": "app/Actions/PublishPost.php",
+            "status": "modified",
+            "patch": "@@ -1,8 +1,13 @@\n public function handle(Post $post): void\n {\n-    if ($post->published_at !== null) {\n+    if ($this->alreadyPublished($post)) {\n         return;\n     }\n \n     $post->update(['published_at' => now()]);\n }\n+\n+private function alreadyPublished(Post $post): bool\n+{\n+    return $post->published_at !== null;\n+}"
+        }
+    ],
+    "expected": []
+}

@@ -11,6 +11,7 @@ final class ReviewContext
      * @param  array<string, FilePatch>  $files  Files to review, keyed by path.
      * @param  array<string, string>  $instructions  Instruction file path => content.
      * @param  list<string>  $skippedFiles  Paths left out (ignored, binary or over the limits).
+     * @param  ?string  $documentation  The repository guide, if enabled and available.
      */
     public function __construct(
         public readonly string $baseSha,
@@ -18,6 +19,7 @@ final class ReviewContext
         public readonly array $files,
         public readonly array $instructions,
         public readonly array $skippedFiles,
+        public readonly ?string $documentation = null,
     ) {}
 
     /**
@@ -33,6 +35,7 @@ final class ReviewContext
             files: array_filter($this->files, $filter),
             instructions: $this->instructions,
             skippedFiles: $this->skippedFiles,
+            documentation: $this->documentation,
         );
     }
 

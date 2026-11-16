@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:documentation' => 60,
     ],
 
     /*
@@ -199,7 +200,7 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['webhooks', 'github', 'conversations', 'reviews', 'graphs', 'default'],
+            'queue' => ['webhooks', 'github', 'conversations', 'reviews', 'graphs', 'documentation', 'default'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

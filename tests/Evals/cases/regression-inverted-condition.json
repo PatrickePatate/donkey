@@ -1,0 +1,21 @@
+{
+    "name": "regression-inverted-condition",
+    "title": "Simplify the trial check",
+    "description": "Cleans up the subscription trial logic.",
+    "files": [
+        {
+            "path": "app/Models/Subscription.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function onTrial(): bool\n {\n-    return $this->trial_ends_at !== null && $this->trial_ends_at->isFuture();\n+    return $this->trial_ends_at !== null && $this->trial_ends_at->isPast();\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Models/Subscription.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

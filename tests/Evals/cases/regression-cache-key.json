@@ -1,0 +1,21 @@
+{
+    "name": "regression-cache-key",
+    "title": "Shorten cache keys",
+    "description": "Uses shorter keys to save memory.",
+    "files": [
+        {
+            "path": "app/Services/PermissionCache.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function for(User $user): array\n {\n-    return Cache::remember(\"permissions:{$user->team_id}:{$user->id}\", 3600, fn () => $this->load($user));\n+    return Cache::remember(\"permissions:{$user->id}\", 3600, fn () => $this->load($user));\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/PermissionCache.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+    "name": "regression-serialized-field",
+    "title": "Rename the API field",
+    "description": "Uses camelCase in the resource.",
+    "files": [
+        {
+            "path": "app/Http/Resources/UserResource.php",
+            "status": "modified",
+            "patch": "@@ -1,7 +1,7 @@\n public function toArray(Request $request): array\n {\n     return [\n         'id' => $this->id,\n-        'created_at' => $this->created_at,\n+        'createdAt' => $this->created_at,\n     ];\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Http/Resources/UserResource.php",
+            "start_line": 5,
+            "end_line": 5,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

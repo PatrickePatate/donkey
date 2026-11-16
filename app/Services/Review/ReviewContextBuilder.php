@@ -2,6 +2,7 @@
 
 namespace App\Services\Review;
 
+use App\Models\Repository;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
 use Illuminate\Support\Str;
@@ -61,7 +62,35 @@ class ReviewContextBuilder
             files: $files,
             instructions: $files === [] ? [] : $this->instructions($run, array_keys($files)),
             skippedFiles: $skipped,
+            documentation: $this->documentation($pullRequest->repository),
         );
+    }
+
+    private function documentation(Repository $repository): ?string
+    {
+        $limit = max(0, (int) config('documentation.max_review_characters'));
+
+        if (! $repository->auto_docs_enabled || $limit === 0) {
+            return null;
+        }
+
+        $content = $repository->document?->content;
+
+        if (! filled($content)) {
+            return null;
+        }
+
+        if (Str::length($content) <= $limit) {
+            return $content;
+        }
+
+        $suffix = "\n…(truncated)";
+
+        if ($limit <= Str::length($suffix)) {
+            return Str::substr($content, 0, $limit);
+        }
+
+        return Str::substr($content, 0, $limit - Str::length($suffix)).$suffix;
     }
 
     /**

@@ -16,12 +16,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $slug
  * @property int $risk_threshold
  * @property bool $auto_review_default
+ * @property bool $eco_mode
  * @property string $bot_handle
  * @property ?int $monthly_budget_cents
  * @property ?list<string> $auto_join_domains
  * @property OrganizationRole $auto_join_role
  */
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role'])]
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -32,6 +33,7 @@ class Organization extends Model
         return [
             'risk_threshold' => 'integer',
             'auto_review_default' => 'boolean',
+            'eco_mode' => 'boolean',
             'monthly_budget_cents' => 'integer',
             'auto_join_domains' => 'array',
             'auto_join_role' => OrganizationRole::class,

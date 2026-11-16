@@ -18,6 +18,8 @@ new #[Title('Organization settings')] class extends Component
 
     public bool $autoReviewDefault = true;
 
+    public bool $ecoMode = false;
+
     public string $botHandle = '';
 
     public string $autoJoinDomains = '';
@@ -29,6 +31,7 @@ new #[Title('Organization settings')] class extends Component
         $this->name = $this->organization->name;
         $this->riskThreshold = $this->organization->risk_threshold;
         $this->autoReviewDefault = $this->organization->auto_review_default;
+        $this->ecoMode = $this->organization->eco_mode;
         $this->botHandle = $this->organization->bot_handle;
         $this->autoJoinDomains = implode("\n", $this->organization->auto_join_domains ?? []);
         $this->autoJoinRole = $this->organization->auto_join_role->value;
@@ -48,6 +51,7 @@ new #[Title('Organization settings')] class extends Component
             'name' => ['required', 'string', 'min:2', 'max:80'],
             'riskThreshold' => ['required', 'integer', 'between:0,100'],
             'autoReviewDefault' => ['boolean'],
+            'ecoMode' => ['boolean'],
             'botHandle' => ['required', 'string', 'max:39', 'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i'],
             'autoJoinDomains' => ['nullable', 'string', 'max:1000'],
             'autoJoinRole' => ['required', Rule::in([OrganizationRole::Member->value, OrganizationRole::Viewer->value])],
@@ -63,6 +67,7 @@ new #[Title('Organization settings')] class extends Component
             'name' => $validated['name'],
             'risk_threshold' => $validated['riskThreshold'],
             'auto_review_default' => $validated['autoReviewDefault'],
+            'eco_mode' => $validated['ecoMode'],
             'bot_handle' => $validated['botHandle'],
             'auto_join_domains' => $domains === [] ? null : $domains,
             'auto_join_role' => $validated['autoJoinRole'],
@@ -158,6 +163,16 @@ new #[Title('Organization settings')] class extends Component
 
             <x-ui.card title="Reviews">
                 <div class="grid gap-6">
+                    <div class="flex items-center justify-between gap-4">
+                        <div class="grid gap-1">
+                            <x-ui.label>Eco-mode</x-ui.label>
+                            <p class="text-sm text-muted-foreground">Use a lower-cost model for small, low-risk review tasks. Large changes and critical findings stay on the main model.</p>
+                        </div>
+                        <x-ui.switch wire:model="ecoMode" :checked="$ecoMode" :disabled="! $canUpdate" />
+                    </div>
+
+                    <x-ui.separator />
+
                     <div class="flex items-center justify-between gap-4">
                         <div class="grid gap-1">
                             <x-ui.label>Auto-review new repositories</x-ui.label>

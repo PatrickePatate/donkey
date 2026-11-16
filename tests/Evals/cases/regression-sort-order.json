@@ -1,0 +1,21 @@
+{
+    "name": "regression-sort-order",
+    "title": "Speed up the leaderboard",
+    "description": "Uses a database order instead of a collection sort.",
+    "files": [
+        {
+            "path": "app/Queries/Leaderboard.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function top(int $limit): Collection\n {\n-    return Player::all()->sortByDesc('score')->take($limit)->values();\n+    return Player::orderBy('score')->limit($limit)->get();\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Queries/Leaderboard.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

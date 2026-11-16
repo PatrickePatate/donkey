@@ -1,0 +1,21 @@
+{
+    "name": "regression-changed-default",
+    "title": "Make notifications configurable",
+    "description": "Adds a parameter for the channel.",
+    "files": [
+        {
+            "path": "app/Services/Notifier.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n-public function send(User $user, string $message, bool $queued = true): void\n+public function send(User $user, string $message, bool $queued = false): void\n {\n     $queued ? $this->queue->push($user, $message) : $this->mailer->sendNow($user, $message);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/Notifier.php",
+            "start_line": 1,
+            "end_line": 1,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

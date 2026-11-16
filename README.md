@@ -1,58 +1,199 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🫏 Donkey
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**An AI code reviewer for GitHub that learns how your team works.**
 
-## About Laravel
+Donkey reviews pull requests the moment they open: it leaves inline comments with ready-to-commit suggestions, answers questions in the thread, and gets better every time someone tells it it was wrong. It runs as a GitHub App on your own infrastructure, with your own model API key.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Inline reviews with suggestions:** comments land on the exact lines, with `suggestion` blocks you can commit in one click, plus a check run on the commit.
+- **Risk-score gate:** every finding gets a 0–100 risk score. Set a threshold per organization or per repository; lower-risk findings stay in the dashboard instead of cluttering the pull request.
+- **Verifier pass:** a second AI pass re-reads each finding against the surrounding code and rejects false positives before anything is posted.
+- **Code graph context:** with [kodus-graph](https://github.com/kodustech/kodus-graph), reviews know who calls a changed function, which signatures changed, how far the change spreads and what has no tests.
+- **Reads your conventions:** `CLAUDE.md` and `AGENTS.md` from the repository root and from the directories of changed files.
+- **Talk to it on GitHub:** `@donkey` answers questions, in a finding's thread or on the pull request.
+- **Configurable agents:** specialist reviewers (Security, Laravel, Architecture, Testing, Performance, or your own) with their own instructions, files and severity floor. Run one on demand with `@donkey run security`, or let it join automatic reviews.
+- **Memory and learning:** `@donkey remember …` teaches it about a repository. Dismissals, reactions and resolved threads become proposed learnings that an admin approves, scoped to one repository or the whole organization.
+- **Teams and roles:** organizations with owners, admins, members and viewers, invitations, and optional auto-join for colleagues with a verified email at your domain.
+- **Cost control:** every AI call is metered; owners see spend by feature, repository, model and pull request, and can set a monthly budget with email alerts.
+- **Live dashboard:** review progress streams in real time over Laravel Reverb.
+- **Audit log, retention and an evaluation harness** for running it seriously.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Commands in pull request comments
 
-## Learning Laravel
+| Comment | What it does |
+|---|---|
+| `@donkey review` | Review the changes since the last review |
+| `@donkey full review` | Review the whole pull request again |
+| `@donkey run <agent>` / `@donkey agents` | Run one specialist agent / list them |
+| `@donkey <question>` | Ask anything about the pull request, or about a finding when asked in its thread |
+| `@donkey ignore: <why>` | In a finding's thread: dismiss it and teach Donkey |
+| `@donkey remember <fact>` | Save a fact about the repository for future reviews |
+| `@donkey pause` / `@donkey resume` | Stop or restart automatic reviews on this pull request |
+| `@donkey help` | List the commands |
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+`donkey` is the default handle; change it in the organization settings.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Requirements
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- PHP 8.5 with the `pgsql` and `redis` extensions, and [Composer](https://getcomposer.org)
+- Node.js 20+ and npm
+- PostgreSQL 16+ with the [pgvector](https://github.com/pgvector/pgvector) extension
+- Redis
+- A [GitHub App](#2-create-the-github-app) you own
+- An API key for a model provider supported by [`laravel/ai`](https://laravel.com/docs/ai) (Anthropic by default)
 
-## Agentic Development
+Docker Compose can provide PostgreSQL and Redis, or the whole stack.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Install
+
+### 1. Get the code and the services
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone <your-fork-or-this-repo-url> donkey
+cd donkey
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Start PostgreSQL (with pgvector) and Redis:
 
-## Contributing
+```bash
+docker compose up -d pgsql redis
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+This exposes PostgreSQL on port `5434` and Redis on port `6380`.
 
-## Code of Conduct
+### 2. Create the GitHub App
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+In GitHub, go to **Settings → Developer settings → GitHub Apps → New GitHub App** (for an organization, use the organization's settings).
 
-## Security Vulnerabilities
+| Setting | Value |
+|---|---|
+| Homepage URL | your `APP_URL` |
+| Callback URL | `<APP_URL>/github/setup` (also set "Request user authorization (OAuth) during installation") |
+| Setup URL | `<APP_URL>/github/setup` (also set "Redirect on update") |
+| Webhook URL | `<APP_URL>/webhooks/github` |
+| Webhook secret | a long random string |
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+During development, expose your machine with a tunnel (for example `ngrok http 8000`) and use its address as `APP_URL`; GitHub must be able to reach the webhook URL.
+
+**Repository permissions:** Pull requests: read & write · Contents: read · Checks: read & write · Issues: read & write · Metadata: read.
+
+**Subscribe to events:** Pull request · Issue comment · Pull request review comment · Pull request review thread · Installation and installation repositories.
+
+Then generate a **private key** and save it as `storage/app/private/github-app.pem`.
+
+### 3. Install and configure
+
+```bash
+composer setup
+```
+
+This installs PHP and JavaScript dependencies, creates `.env`, generates the app key, runs the migrations and builds the assets. It also installs [Bun](https://bun.sh) and `kodus-graph` locally (no global install, no `curl | bash`).
+
+Then edit `.env`:
+
+```dotenv
+APP_URL=https://your-host
+
+# PostgreSQL + Redis (the ports from docker compose)
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5434
+DB_DATABASE=donkey
+DB_USERNAME=donkey
+DB_PASSWORD=donkey
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
+REDIS_PORT=6380
+
+# GitHub App
+GITHUB_APP_ID=
+GITHUB_APP_SLUG=
+GITHUB_APP_CLIENT_ID=
+GITHUB_APP_CLIENT_SECRET=
+GITHUB_APP_PRIVATE_KEY_PATH=storage/app/private/github-app.pem
+GITHUB_WEBHOOK_SECRET=
+
+# Model provider
+ANTHROPIC_API_KEY=
+```
+
+Real-time updates use Laravel Reverb. Generate its credentials with `php artisan install:broadcasting` if your `.env` has no `REVERB_*` values, and set `BROADCAST_CONNECTION=reverb`.
+
+Mail is only needed for invitations, email verification and budget alerts; set `MAIL_*` to a real mailer in production (the default `log` mailer writes emails to `storage/logs`).
+
+> If `.env.example` and your database settings disagree, `.env` always wins. After pulling new code, run `php artisan migrate`.
+
+### 4. Run it
+
+```bash
+composer dev
+```
+
+This starts the web server, Horizon (queues), Reverb (websockets) and the Vite dev server. Open <http://localhost:8000>, register, create an organization, and connect GitHub from **Repositories → Connect GitHub**.
+
+Reviews also need the scheduler for the nightly jobs (learning proposals, decay and pruning):
+
+```bash
+php artisan schedule:work
+```
+
+### Run everything in Docker instead
+
+```bash
+docker compose up -d --build
+docker compose exec app composer setup
+```
+
+The image ships PHP 8.5, Bun and `kodus-graph`; the app is on port `8000`, Reverb on `8080`, and Horizon runs as its own container. Mount your `.env` and the GitHub private key as above.
+
+## Configuration
+
+| File | What it controls |
+|---|---|
+| `config/reviews.php` | Provider and model, size limits, ignored paths, verifier, conversation settings |
+| `config/graph.php` | Code graph: enable/disable, binary location, timeouts |
+| `config/agents.php` | Templates offered when creating an agent |
+| `config/learning.php` | Memory and learning: embeddings, prompt budget, decay |
+| `config/ai_pricing.php` | Price per million tokens used for cost estimates |
+| `config/retention.php` | How long webhooks, usage, audit events and conversations are kept |
+| `config/auto_join.php` | Public email providers that can never be auto-joined |
+
+Useful environment variables: `REVIEW_AI_MODEL`, `REVIEW_VERIFIER_ENABLED`, `GRAPH_ENABLED`, `LEARNING_EMBEDDINGS_PROVIDER` (set it, for example to `openai`, to enable similarity search over memories and learnings).
+
+## Using Donkey
+
+1. **Connect GitHub** and pick the repositories to review. Auto-review is on by default; turn it off per repository.
+2. **Set the risk threshold** per organization (Settings) or per repository (Repositories). Higher means fewer, more important comments.
+3. **Open a pull request.** Watch the review progress live on its page, and see findings, the impact analysis and the conversation.
+4. **Teach it.** Dismiss wrong findings with `@donkey ignore: <why>`, add facts with `@donkey remember …`, then approve the proposed learnings in **Knowledge**.
+5. **Add agents** in **Agents**, starting from a template.
+6. **Watch the bill.** Owners see **Usage & cost** and can set a monthly budget; when it is reached, new reviews and answers pause until next month.
+
+## Evaluating changes
+
+Before changing a prompt or switching models, measure the effect on pull requests with known, planted problems:
+
+```bash
+php artisan eval:run
+```
+
+It reports recall (planted bugs found), precision (how much of what it said was right), severity accuracy and cost. Cases live in `tests/Evals/cases`. Each run calls the model, so it asks for confirmation first.
+
+## Development
+
+```bash
+composer test                              # Pest
+vendor/bin/pint --dirty --format agent     # code style
+vendor/bin/phpstan analyse                 # Larastan
+```
+
+Tests never reach the network: every HTTP request must be faked. See [PHASES.md](PHASES.md) for how the project was built, phase by phase, and [PHASE6_HANDOFF.md](PHASE6_HANDOFF.md) for the work still open.
+
+## Built with
+
+[Laravel 13](https://laravel.com) · [Livewire 4](https://livewire.laravel.com) · [Tailwind CSS](https://tailwindcss.com) · [Alpine.js](https://alpinejs.dev) · [Laravel Reverb](https://reverb.laravel.com) · [Laravel Horizon](https://laravel.com/docs/horizon) · [laravel/ai](https://laravel.com/docs/ai) · [kodus-graph](https://github.com/kodustech/kodus-graph) · PostgreSQL + pgvector
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Add your license here.

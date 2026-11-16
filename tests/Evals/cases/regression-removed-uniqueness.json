@@ -1,0 +1,21 @@
+{
+    "name": "regression-removed-uniqueness",
+    "title": "Relax email validation",
+    "description": "Allows plus addressing.",
+    "files": [
+        {
+            "path": "app/Http/Requests/RegisterRequest.php",
+            "status": "modified",
+            "patch": "@@ -1,6 +1,6 @@\n public function rules(): array\n {\n     return [\n-        'email' => ['required', 'email', 'unique:users,email'],\n+        'email' => ['required', 'string'],\n     ];\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Http/Requests/RegisterRequest.php",
+            "start_line": 4,
+            "end_line": 4,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+    "name": "regression-loop-bound",
+    "title": "Refactor batch processing",
+    "description": "Uses a for loop instead of array_chunk.",
+    "files": [
+        {
+            "path": "app/Support/Batcher.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,9 @@\n public static function batches(array $items, int $size): array\n {\n-    return array_chunk($items, $size);\n+    $batches = [];\n+    for ($i = 0; $i < count($items) - $size; $i += $size) {\n+        $batches[] = array_slice($items, $i, $size);\n+    }\n+\n+    return $batches;\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Support/Batcher.php",
+            "start_line": 4,
+            "end_line": 4,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

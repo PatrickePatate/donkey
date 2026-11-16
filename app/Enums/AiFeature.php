@@ -13,6 +13,7 @@ enum AiFeature: string
     case Conversation = 'conversation';
     case Learning = 'learning';
     case Evaluation = 'evaluation';
+    case Documentation = 'documentation';
 
     public function label(): string
     {
@@ -23,6 +24,7 @@ enum AiFeature: string
             self::Conversation => 'Answers on GitHub',
             self::Learning => 'Learning proposals',
             self::Evaluation => 'Evaluations',
+            self::Documentation => 'Repository docs',
         };
     }
 }

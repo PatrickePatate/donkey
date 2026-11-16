@@ -1,0 +1,21 @@
+{
+    "name": "regression-removed-guard",
+    "title": "Streamline order cancellation",
+    "description": "Removes noise from the cancel action.",
+    "files": [
+        {
+            "path": "app/Actions/CancelOrder.php",
+            "status": "modified",
+            "patch": "@@ -1,9 +1,5 @@\n public function handle(Order $order): void\n {\n-    if ($order->status === OrderStatus::Shipped) {\n-        throw new OrderAlreadyShipped($order);\n-    }\n-\n     $order->update(['status' => OrderStatus::Cancelled]);\n     $this->payments->refund($order);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Actions/CancelOrder.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "high"
+        }
+    ]
+}

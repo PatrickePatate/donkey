@@ -1,0 +1,33 @@
+{
+    "name": "regression-event-payload",
+    "title": "Slim down the OrderPlaced event",
+    "description": "Only keeps the id.",
+    "files": [
+        {
+            "path": "app/Events/OrderPlaced.php",
+            "status": "modified",
+            "patch": "@@ -1,1 +1,1 @@\n-public function __construct(public Order $order) {}\n+public function __construct(public int $orderId) {}"
+        },
+        {
+            "path": "app/Listeners/SendOrderConfirmation.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function handle(OrderPlaced $event): void\n {\n     Mail::to($event->order->customer)->send(new OrderConfirmation($event->order));\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Events/OrderPlaced.php",
+            "start_line": 1,
+            "end_line": 1,
+            "category": "regression",
+            "severity": "high"
+        },
+        {
+            "file": "app/Listeners/SendOrderConfirmation.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "high"
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+    "name": "regression-off-by-one-boundary",
+    "title": "Tidy the discount tiers",
+    "description": "Simplifies the tier comparison.",
+    "files": [
+        {
+            "path": "app/Pricing/DiscountTier.php",
+            "status": "modified",
+            "patch": "@@ -1,5 +1,5 @@\n public static function for(int $quantity): int\n {\n-    if ($quantity >= 100) {\n+    if ($quantity > 100) {\n         return 15;\n     }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Pricing/DiscountTier.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

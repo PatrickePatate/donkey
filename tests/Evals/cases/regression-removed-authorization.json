@@ -1,0 +1,21 @@
+{
+    "name": "regression-removed-authorization",
+    "title": "Clean up invoice controller",
+    "description": "Removes redundant code.",
+    "files": [
+        {
+            "path": "app/Http/Controllers/InvoiceController.php",
+            "status": "modified",
+            "patch": "@@ -1,6 +1,4 @@\n public function download(Invoice $invoice): Response\n {\n-    $this->authorize('view', $invoice);\n-\n     return response()->download($invoice->path());\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Http/Controllers/InvoiceController.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "security",
+            "severity": "high"
+        }
+    ]
+}

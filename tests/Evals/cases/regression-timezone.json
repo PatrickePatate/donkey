@@ -1,0 +1,21 @@
+{
+    "name": "regression-timezone",
+    "title": "Use Carbon helpers",
+    "description": "Modernizes the date code.",
+    "files": [
+        {
+            "path": "app/Services/Billing.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function isDue(Invoice $invoice): bool\n {\n-    return $invoice->due_at->lte(now($invoice->customer->timezone)->endOfDay());\n+    return $invoice->due_at->isToday();\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/Billing.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

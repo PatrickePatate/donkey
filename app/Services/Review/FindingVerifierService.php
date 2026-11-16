@@ -21,7 +21,7 @@ class FindingVerifierService
 
     public int $outputTokens = 0;
 
-    public function __construct(private PullRequestClient $client, private UsageMeter $usage) {}
+    public function __construct(private PullRequestClient $client, private UsageMeter $usage, private ModelRouter $models) {}
 
     /**
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
@@ -33,11 +33,14 @@ class FindingVerifierService
             return [];
         }
 
+        $organization = $run->pullRequest->repository->organization;
+        $model = $this->models->verifierModel($organization, $findings);
+
         try {
             $response = FindingVerifier::make()->prompt(
                 $this->prompt($run, $findings, $knowledge),
                 provider: config('reviews.provider'),
-                model: config('reviews.verifier.model'),
+                model: $model,
                 timeout: (int) config('reviews.timeout'),
             );
         } catch (Throwable $exception) {
@@ -50,10 +53,10 @@ class FindingVerifierService
         $this->outputTokens += $response->usage->outputTokens;
 
         $this->usage->record(
-            $run->pullRequest->repository->organization,
+            $organization,
             AiFeature::Verification,
             config('reviews.provider'),
-            config('reviews.verifier.model'),
+            $model,
             $response->usage,
             pullRequest: $run->pullRequest,
         );

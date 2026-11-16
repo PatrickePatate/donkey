@@ -1,0 +1,21 @@
+{
+    "name": "regression-early-return",
+    "title": "Skip work for empty carts",
+    "description": "Returns early when nothing is in the cart.",
+    "files": [
+        {
+            "path": "app/Services/Checkout.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,8 @@\n public function total(Cart $cart): int\n {\n+    if ($cart->items->count() < 2) {\n+        return 0;\n+    }\n+\n     return $cart->items->sum(fn ($item) => $item->price * $item->quantity);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/Checkout.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "high"
+        }
+    ]
+}

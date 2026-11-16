@@ -1,0 +1,33 @@
+{
+    "name": "regression-renamed-config-key",
+    "title": "Rename the retry setting",
+    "description": "Clearer config name.",
+    "files": [
+        {
+            "path": "config/services.php",
+            "status": "modified",
+            "patch": "@@ -1,3 +1,3 @@\n 'payments' => [\n-    'retries' => env('PAYMENT_RETRIES', 3),\n+    'max_attempts' => env('PAYMENT_RETRIES', 3),\n ],"
+        },
+        {
+            "path": "app/Services/PaymentGateway.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function charge(int $cents): Charge\n {\n     return retry(config('services.payments.retries'), fn () => $this->client->charge($cents));\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "config/services.php",
+            "start_line": 2,
+            "end_line": 2,
+            "category": "regression",
+            "severity": "medium"
+        },
+        {
+            "file": "app/Services/PaymentGateway.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

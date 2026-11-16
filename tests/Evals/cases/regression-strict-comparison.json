@@ -1,0 +1,21 @@
+{
+    "name": "regression-strict-comparison",
+    "title": "Use strict comparisons",
+    "description": "Applies the strict comparison rule everywhere.",
+    "files": [
+        {
+            "path": "app/Http/Middleware/EnsureAdmin.php",
+            "status": "modified",
+            "patch": "@@ -1,5 +1,5 @@\n public function handle(Request $request, Closure $next): Response\n {\n-    if ($request->user()->role_id == config('roles.admin')) {\n+    if ($request->user()->role_id === env('ADMIN_ROLE_ID')) {\n         return $next($request);\n     }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Http/Middleware/EnsureAdmin.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "medium"
+        }
+    ]
+}

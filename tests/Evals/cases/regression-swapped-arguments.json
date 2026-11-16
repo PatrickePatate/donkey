@@ -1,0 +1,21 @@
+{
+    "name": "regression-swapped-arguments",
+    "title": "Extract a transfer helper",
+    "description": "Moves the transfer into a helper.",
+    "files": [
+        {
+            "path": "app/Services/Wallet.php",
+            "status": "modified",
+            "patch": "@@ -1,4 +1,4 @@\n public function pay(Account $payer, Account $payee, int $cents): void\n {\n-    $this->ledger->transfer($payer, $payee, $cents);\n+    $this->ledger->transfer($payee, $payer, $cents);\n }"
+        }
+    ],
+    "expected": [
+        {
+            "file": "app/Services/Wallet.php",
+            "start_line": 3,
+            "end_line": 3,
+            "category": "regression",
+            "severity": "high"
+        }
+    ]
+}

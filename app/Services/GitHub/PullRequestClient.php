@@ -60,9 +60,17 @@ class PullRequestClient
      */
     public function fileContent(PullRequest $pullRequest, string $path, string $ref): ?string
     {
-        $response = $this->request($pullRequest)
+        return $this->repositoryFileContent($pullRequest->repository, $path, $ref);
+    }
+
+    /**
+     * Raw content of a repository file at a ref, or null when it does not exist.
+     */
+    public function repositoryFileContent(Repository $repository, string $path, string $ref): ?string
+    {
+        $response = $this->repositoryRequest($repository)
             ->accept('application/vnd.github.raw+json')
-            ->get($this->repoPath($pullRequest).'/contents/'.implode('/', array_map('rawurlencode', explode('/', $path))), ['ref' => $ref]);
+            ->get($this->repositoryPath($repository).'/contents/'.implode('/', array_map('rawurlencode', explode('/', $path))), ['ref' => $ref]);
 
         if ($response->status() === 404) {
             return null;
@@ -235,15 +243,48 @@ class PullRequestClient
      */
     public function branchHead(Repository $repository, string $branch): string
     {
-        return (string) $this->github->asInstallation($repository->installation->installation_id)
-            ->get("/repos/{$repository->full_name}/commits/".rawurlencode($branch))
+        return (string) $this->repositoryRequest($repository)
+            ->get($this->repositoryPath($repository).'/commits/'.rawurlencode($branch))
             ->throw()
             ->json('sha');
     }
 
+    /**
+     * Paths of blob entries at a commit, in the order GitHub returned them.
+     *
+     * @return list<string>
+     */
+    public function tree(Repository $repository, string $sha): array
+    {
+        $response = $this->repositoryRequest($repository)
+            ->get($this->repositoryPath($repository)."/git/trees/{$sha}", ['recursive' => 1])
+            ->throw()
+            ->json();
+
+        $paths = [];
+
+        foreach ($response['tree'] ?? [] as $entry) {
+            if (($entry['type'] ?? null) === 'blob' && is_string($entry['path'] ?? null)) {
+                $paths[] = $entry['path'];
+            }
+        }
+
+        return $paths;
+    }
+
     private function request(PullRequest $pullRequest): PendingRequest
     {
-        return $this->github->asInstallation($pullRequest->repository->installation->installation_id);
+        return $this->repositoryRequest($pullRequest->repository);
+    }
+
+    private function repositoryRequest(Repository $repository): PendingRequest
+    {
+        return $this->github->asInstallation($repository->installation->installation_id);
+    }
+
+    private function repositoryPath(Repository $repository): string
+    {
+        return '/repos/'.$repository->full_name;
     }
 
     private function repoPath(PullRequest $pullRequest): string

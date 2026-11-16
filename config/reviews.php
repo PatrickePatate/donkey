@@ -18,6 +18,12 @@ return [
 
     'timeout' => (int) env('REVIEW_AI_TIMEOUT', 180),
 
+    'eco' => [
+        'model' => env('REVIEW_ECO_MODEL', 'claude-haiku-5-5'),
+        'small_chunk_characters' => (int) env('REVIEW_ECO_SMALL_CHUNK_CHARACTERS', 8_000),
+        'verifier_max_findings' => (int) env('REVIEW_ECO_VERIFIER_MAX_FINDINGS', 3),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Limits
@@ -101,6 +107,23 @@ return [
     */
 
     'max_impact_boost' => (float) env('REVIEW_MAX_IMPACT_BOOST', 0.3),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Correctness gate
+    |--------------------------------------------------------------------------
+    |
+    | Bug, logic and regression findings below the risk threshold are still
+    | sent to the verifier and published when it confirms them, as long as
+    | they reach this severity and confidence. Requires the verifier.
+    |
+    */
+
+    'correctness_gate' => [
+        'enabled' => (bool) env('REVIEW_CORRECTNESS_GATE_ENABLED', true),
+        'min_severity' => env('REVIEW_CORRECTNESS_GATE_MIN_SEVERITY', 'medium'),
+        'min_confidence' => (int) env('REVIEW_CORRECTNESS_GATE_MIN_CONFIDENCE', 70),
+    ],
 
     /*
     |--------------------------------------------------------------------------

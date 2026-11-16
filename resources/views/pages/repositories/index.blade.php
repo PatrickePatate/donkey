@@ -1,7 +1,9 @@
 <?php
 
 use App\Jobs\BuildRepositoryGraph;
+use App\Jobs\GenerateRepositoryDocumentation;
 use App\Jobs\SyncInstallationRepositories;
+use App\Services\Audit\AuditLog;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Graph\KodusGraph;
 use App\Models\GithubInstallation;
@@ -42,7 +44,7 @@ new #[Title('Repositories')] class extends Component
     public function repositories(): Collection
     {
         return $this->organization->repositories()
-            ->with(['installation', 'organization', 'latestGraph'])
+            ->with(['installation', 'organization', 'latestGraph', 'document'])
             ->when($this->search !== '', fn ($query) => $query->whereLike('full_name', "%{$this->search}%"))
             ->orderBy('full_name')
             ->get();
@@ -66,6 +68,41 @@ new #[Title('Repositories')] class extends Component
         app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'repository.auto_review_changed', $repository, ['auto_review_enabled' => $enabled]);
 
         $this->dispatch('toast', message: "Auto-review updated for {$repository->full_name}.", variant: 'success');
+    }
+
+    public function setAutoDocs(int $repositoryId, bool $enabled): void
+    {
+        $repository = $this->findRepository($repositoryId);
+        Gate::authorize('update', $repository);
+
+        if ($repository->auto_docs_enabled === $enabled) {
+            return;
+        }
+
+        $repository->update(['auto_docs_enabled' => $enabled]);
+        app(AuditLog::class)->record($this->organization, 'repository.auto_docs_changed', $repository, AuditLog::changes($repository, ['auto_docs_enabled']));
+
+        if ($enabled && ! $repository->document()->whereNotNull('content')->exists()) {
+            GenerateRepositoryDocumentation::dispatchFor($repository, immediate: true);
+        }
+
+        $this->dispatch('toast', message: "Automatic documentation updated for {$repository->full_name}.", variant: 'success');
+    }
+
+    public function regenerateDocumentation(int $repositoryId): void
+    {
+        $repository = $this->findRepository($repositoryId);
+        Gate::authorize('update', $repository);
+
+        if (! $repository->auto_docs_enabled) {
+            $this->dispatch('toast', message: 'Enable automatic documentation before regenerating it.', variant: 'destructive');
+
+            return;
+        }
+
+        GenerateRepositoryDocumentation::dispatchFor($repository, immediate: true);
+
+        $this->dispatch('toast', message: "Regenerating documentation for {$repository->full_name}…");
     }
 
     public function setRiskThreshold(int $repositoryId, mixed $value): void
@@ -203,6 +240,7 @@ new #[Title('Repositories')] class extends Component
                                 <th class="h-10 px-2 font-medium">Auto-review</th>
                                 <th class="h-10 px-2 font-medium">Risk threshold</th>
                                 <th class="h-10 px-2 font-medium">Code graph</th>
+                                <th class="h-10 px-2 font-medium">Docs</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -260,11 +298,37 @@ new #[Title('Repositories')] class extends Component
                                                         <code>{{ \Illuminate\Support\Str::substr($graph->commit_sha, 0, 7) }}</code> · {{ $graph->built_at->diffForHumans(short: true) }}
                                                     </span>
                                                 @endif
+                                                @if ($graph->status === \App\Enums\GraphStatus::Ready)
+                                                    <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.graph', $repository)" wire:navigate title="Explore dependency graph">
+                                                        <x-ui.icon name="git-branch" />
+                                                    </x-ui.button>
+                                                @endif
                                             @else
                                                 <span class="text-xs text-muted-foreground">Not built</span>
                                             @endif
                                             @if ($canUpdate && $this->graphAvailable)
                                                 <x-ui.button variant="ghost" size="icon" class="size-7" wire:click="rebuildGraph({{ $repository->id }})" title="Rebuild graph">
+                                                    <x-ui.icon name="refresh" />
+                                                </x-ui.button>
+                                            @endif
+                                        </div>
+                                    </td>
+                                    <td class="p-2">
+                                        <div class="flex items-center gap-2">
+                                            <x-ui.switch
+                                                wire:key="docs-switch-{{ $repository->id }}-{{ $repository->auto_docs_enabled ? 1 : 0 }}"
+                                                :checked="$repository->auto_docs_enabled"
+                                                x-on:switch-change="$wire.setAutoDocs({{ $repository->id }}, $event.detail)"
+                                                :disabled="! $canUpdate"
+                                                aria-label="Automatic repository documentation"
+                                            />
+                                            @if (filled($repository->document?->content))
+                                                <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.documentation', $repository)" wire:navigate title="View documentation">
+                                                    <x-ui.icon name="file-code" />
+                                                </x-ui.button>
+                                            @endif
+                                            @if ($canUpdate && $repository->auto_docs_enabled)
+                                                <x-ui.button variant="ghost" size="icon" class="size-7" wire:click="regenerateDocumentation({{ $repository->id }})" title="Regenerate documentation">
                                                     <x-ui.icon name="refresh" />
                                                 </x-ui.button>
                                             @endif

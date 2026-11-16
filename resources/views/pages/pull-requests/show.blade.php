@@ -10,6 +10,7 @@ use App\Models\PullRequest;
 use App\Models\ReviewAgent;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
+use App\Models\ReviewRunLog;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -64,7 +65,7 @@ new class extends Component
         }
 
         $this->pullRequest->refresh();
-        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
     }
 
     /**
@@ -124,6 +125,15 @@ new class extends Component
     }
 
     /**
+     * @return Collection<int, ReviewRunLog>
+     */
+    #[Computed]
+    public function logs(): Collection
+    {
+        return $this->selectedRun?->logs()->orderBy('id')->limit(500)->get() ?? new Collection;
+    }
+
+    /**
      * @return array<string, int>
      */
     #[Computed]
@@ -162,7 +172,7 @@ new class extends Component
     public function selectRun(int $runId): void
     {
         $this->selectedRunId = $runId;
-        unset($this->selectedRun, $this->findings, $this->findingCounts);
+        unset($this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
     }
 
     public function startReview(StartReview $startReview): void
@@ -178,7 +188,7 @@ new class extends Component
         $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, full: true, source: (string) Str::uuid());
 
         $this->selectedRunId = $run?->id;
-        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
 
         $this->dispatch('toast', message: 'Review queued.', variant: 'success');
     }
@@ -198,7 +208,7 @@ new class extends Component
         $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, source: (string) Str::uuid(), agent: $agent);
 
         $this->selectedRunId = $run?->id;
-        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
 
         $this->dispatch('toast', message: "{$agent->name} agent queued.", variant: 'success');
     }
@@ -318,6 +328,23 @@ new class extends Component
                                     default => 'active',
                                 }"
                             />
+                        @endif
+
+                        @if ($this->logs->isNotEmpty())
+                            <details @if (! $run->status->isFinished()) open @endif class="rounded-md border text-sm">
+                                <summary class="cursor-pointer px-3 py-2 font-medium">Live log</summary>
+                                <ol
+                                    x-data
+                                    x-init="$el.scrollTop = $el.scrollHeight; new MutationObserver(() => $el.scrollTop = $el.scrollHeight).observe($el, { childList: true })"
+                                    class="max-h-64 overflow-y-auto border-t bg-muted/40 p-3 font-mono text-xs"
+                                >
+                                    @foreach ($this->logs as $log)
+                                        <li wire:key="log-{{ $log->id }}" @class(['text-destructive' => $log->level === 'error'])>
+                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span> {{ $log->message }}
+                                        </li>
+                                    @endforeach
+                                </ol>
+                            </details>
                         @endif
 
                         @if ($run->status === ReviewRunStatus::Failed && $run->error)

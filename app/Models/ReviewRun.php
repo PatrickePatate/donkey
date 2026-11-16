@@ -6,6 +6,7 @@ use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
 use App\Enums\RunGraphStatus;
+use App\Events\ReviewRunUpdated;
 use Database\Factories\ReviewRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -42,6 +43,7 @@ use Illuminate\Support\Carbon;
  * @property int $tokens_output
  * @property ?int $github_review_id
  * @property ?int $github_check_run_id
+ * @property ?int $github_comment_id
  * @property ?string $error
  * @property ?Carbon $started_at
  * @property ?Carbon $completed_at
@@ -49,7 +51,7 @@ use Illuminate\Support\Carbon;
  * @property-read PullRequest $pullRequest
  * @property-read ?ReviewAgent $agent
  */
-#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'review_agent_id', 'triggered_by', 'is_full', 'is_dry_run', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'error', 'started_at', 'completed_at'])]
+#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'review_agent_id', 'triggered_by', 'is_full', 'is_dry_run', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'github_comment_id', 'error', 'started_at', 'completed_at'])]
 class ReviewRun extends Model
 {
     /** @use HasFactory<ReviewRunFactory> */
@@ -74,9 +76,29 @@ class ReviewRun extends Model
             'tokens_output' => 'integer',
             'github_review_id' => 'integer',
             'github_check_run_id' => 'integer',
+            'github_comment_id' => 'integer',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * @return HasMany<ReviewRunLog, $this>
+     */
+    public function logs(): HasMany
+    {
+        return $this->hasMany(ReviewRunLog::class);
+    }
+
+    /**
+     * Add a line to the live log and tell the dashboard; logging must never break a review.
+     */
+    public function log(string $message, string $level = 'info'): void
+    {
+        rescue(function () use ($message, $level): void {
+            $this->logs()->create(['message' => $message, 'level' => $level]);
+            ReviewRunUpdated::dispatch($this);
+        });
     }
 
     /**

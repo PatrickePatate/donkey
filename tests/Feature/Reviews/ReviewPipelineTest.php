@@ -58,9 +58,12 @@ it('publishes findings above the threshold as inline comments with suggestions',
             && count($comments) === 1
             && $comments[0]['path'] === 'app/Billing.php'
             && $comments[0]['line'] === 7
-            && str_contains($comments[0]['body'], '```suggestion')
-            && str_contains($request['body'], '1 lower-risk finding below the threshold (50) is kept in the dashboard');
+            && str_contains($comments[0]['body'], '```suggestion');
     });
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
+        && str_ends_with($request->url(), '/issues/comments/555')
+        && str_contains($request['body'], '1 lower-risk finding below the threshold (50) is kept in the dashboard'));
 
     Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
         && str_ends_with($request->url(), '/check-runs/321')

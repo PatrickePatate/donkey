@@ -73,7 +73,9 @@ it('gives the model graph context and boosts findings in heavily used code', fun
     CodeReviewer::assertPrompted(fn ($prompt) => $prompt->contains('<code_graph>') && $prompt->contains('risk HIGH 0.81'));
 
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/pulls/7/reviews')
-        && str_contains($request['comments'][0]['body'], 'used by 16 callers')
+        && str_contains($request['comments'][0]['body'], 'used by 16 callers'));
+    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
+        && str_ends_with($request->url(), '/issues/comments/555')
         && str_contains($request['body'], '**Impact** · 1 changed function · 9 impacted in 4 files · 1 without tests · structural risk HIGH'));
 });
 

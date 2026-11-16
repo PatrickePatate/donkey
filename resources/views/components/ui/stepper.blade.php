@@ -57,7 +57,7 @@
                 @elseif ($status === 'error')
                     <x-ui.icon name="x" class="size-4" />
                 @elseif ($status === 'current')
-                    <span class="size-2.5 animate-pulse rounded-full bg-primary"></span>
+                    <span class="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
                 @else
                     {{ $index + 1 }}
                 @endif

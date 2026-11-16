@@ -12,6 +12,7 @@ use App\Models\ReviewAgent;
 use App\Services\Graph\GraphContext;
 use App\Services\Knowledge\ReviewKnowledge;
 use App\Services\Usage\UsageMeter;
+use Closure;
 
 /**
  * Runs the reviewer over each chunk of the diff and keeps only findings that point at real diff lines.
@@ -23,7 +24,7 @@ class ReviewAnalyzer
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
      */
-    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null): ReviewAnalysis
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null, ?Closure $log = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -33,8 +34,11 @@ class ReviewAnalyzer
         $discarded = 0;
         $organization = $this->meteredOrganization($pullRequest);
 
-        foreach ($context->chunks((int) config('reviews.chunk_characters')) as $chunk) {
+        $chunks = $context->chunks((int) config('reviews.chunk_characters'));
+
+        foreach ($chunks as $number => $chunk) {
             $model = $this->models->reviewModel($organization, $agent, $chunk, $graph);
+            $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
             $response = CodeReviewer::make(agent: $agent)->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: config('reviews.provider'),

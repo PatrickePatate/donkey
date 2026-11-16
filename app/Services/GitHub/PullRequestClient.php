@@ -169,6 +169,22 @@ class PullRequestClient
     }
 
     /**
+     * Edit a comment of the pull request conversation; false when it was deleted.
+     */
+    public function updateIssueComment(PullRequest $pullRequest, int $commentId, string $body): bool
+    {
+        $response = $this->request($pullRequest)->patch($this->repoPath($pullRequest)."/issues/comments/{$commentId}", ['body' => $body]);
+
+        if ($response->status() === 404) {
+            return false;
+        }
+
+        $response->throw();
+
+        return true;
+    }
+
+    /**
      * Reply in an inline review thread. GitHub only accepts the thread's top-level comment id.
      *
      * @return array<string, mixed>

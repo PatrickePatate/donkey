@@ -68,6 +68,14 @@ class Organization extends Model
     }
 
     /**
+     * @return HasMany<ModelPrice, $this>
+     */
+    public function modelPrices(): HasMany
+    {
+        return $this->hasMany(ModelPrice::class);
+    }
+
+    /**
      * @return HasMany<AiUsage, $this>
      */
     public function aiUsages(): HasMany

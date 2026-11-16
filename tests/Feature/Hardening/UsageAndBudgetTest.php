@@ -131,3 +131,18 @@ it('lets owners set the monthly budget, and audits it', function () {
         ->user_id->toBe($owner->id)
         ->metadata->toBe(['monthly_budget_cents' => [null, 25_050]]);
 });
+
+it('lets owners price a model and prices the calls recorded without a price', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $call = AiUsage::factory()->for($organization)->create(['model' => 'vendor/new-model', 'input_tokens' => 1_000_000, 'output_tokens' => 100_000, 'cost_micros' => 0]);
+
+    $page = Livewire::actingAs($owner)->test('pages::settings.usage');
+
+    expect($page->get('prices'))->toBe([['model' => 'vendor/new-model', 'input' => '', 'output' => '']]);
+
+    $page->set('prices.0.input', '2')->set('prices.0.output', '10')->call('savePrices')->assertHasNoErrors();
+
+    expect($call->fresh()->cost_micros)->toBe(3_000_000)
+        ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0, $organization))->toBe(2_000_000)
+        ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0))->toBe(0);
+});

@@ -44,6 +44,8 @@ function fakeGitHubForReview(array $overrides = []): void
         'api.github.com/repos/acme/app/pulls/7/reviews/777/comments*' => Http::response([
             ['id' => 9001, 'path' => 'app/Billing.php', 'line' => 7],
         ]),
+        'api.github.com/repos/acme/app/issues/comments/*' => Http::response([]),
+        'api.github.com/repos/acme/app/issues/7/comments' => Http::response(['id' => 555], 201),
         'api.github.com/repos/acme/app/pulls/7/reviews' => Http::response(['id' => 777]),
     ]);
 }

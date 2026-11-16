@@ -60,8 +60,10 @@ it('runs an agent with its own focus and labels what it posts', function () {
         ->and($this->pullRequest->fresh()->last_reviewed_sha)->toBeNull();
 
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/pulls/7/reviews')
-        && str_contains($request['body'], 'Donkey · Security agent')
         && str_contains($request['comments'][0]['body'], 'Security agent'));
+    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
+        && str_ends_with($request->url(), '/issues/comments/555')
+        && str_contains($request['body'], 'Donkey · Security agent'));
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/check-runs')
         && $request['name'] === 'Donkey review · Security');
 });

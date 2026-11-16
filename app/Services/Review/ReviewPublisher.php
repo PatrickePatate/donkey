@@ -9,6 +9,7 @@ use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
+use Throwable;
 
 /**
  * Turns stored findings into a GitHub review with inline comments and suggestions.
@@ -18,28 +19,67 @@ class ReviewPublisher
     public function __construct(private PullRequestClient $client) {}
 
     /**
+     * Post the "review in progress" comment, or reuse the one an earlier run of the same pull request and agent left.
+     */
+    public function begin(ReviewRun $run): void
+    {
+        if ($run->is_dry_run) {
+            return;
+        }
+
+        $run->github_comment_id ??= ReviewRun::query()
+            ->where('pull_request_id', $run->pull_request_id)
+            ->where('review_agent_id', $run->review_agent_id)
+            ->whereNotNull('github_comment_id')
+            ->latest('id')
+            ->value('github_comment_id');
+
+        $link = route('pull-requests.show', ['pullRequest' => $run->pull_request_id, 'run' => $run->id]);
+
+        $this->syncComment($run, "{$this->heading($run)}\n\n⏳ Reviewing `".substr($run->head_sha, 0, 7)."`… [follow it live]({$link})");
+    }
+
+    /**
+     * Replace the progress comment with the outcome of a run that ended without publishing a review.
+     */
+    public function conclude(ReviewRun $run, string $message): void
+    {
+        if (! $run->is_dry_run) {
+            $this->syncComment($run, "{$this->heading($run)}\n\n{$message}");
+        }
+    }
+
+    /**
      * @param  Collection<int, ReviewFinding>  $findings  Every finding of the run, whatever its status.
      */
     public function publish(ReviewRun $run, Collection $findings, string $summary): void
     {
         $toPublish = $findings->where('status', FindingStatus::Published)->values();
+        $body = $this->summaryBody($run, $findings, $summary);
 
-        if ($toPublish->isEmpty() && ! $this->shouldPostEmptyReview($run)) {
-            return;
+        if ($toPublish->isNotEmpty()) {
+            $this->publishInlineReview($run, $toPublish);
         }
 
-        $body = $this->summaryBody($run, $findings, $summary);
+        $this->syncComment($run, $body);
+    }
+
+    /**
+     * @param  Collection<int, ReviewFinding>  $toPublish
+     */
+    private function publishInlineReview(ReviewRun $run, Collection $toPublish): void
+    {
         $pullRequest = $run->pullRequest;
 
         try {
-            $review = $this->client->createReview($pullRequest, $run->head_sha, $body, $toPublish->map(fn (ReviewFinding $finding): array => $this->comment($finding))->all());
+            $review = $this->client->createReview($pullRequest, $run->head_sha, '', $toPublish->map(fn (ReviewFinding $finding): array => $this->comment($finding))->all());
         } catch (RequestException $exception) {
-            if ($exception->response->status() !== 422 || $toPublish->isEmpty()) {
+            if ($exception->response->status() !== 422) {
                 throw $exception;
             }
 
             // GitHub refused at least one inline position: fall back to listing findings in the review body.
-            $review = $this->client->createReview($pullRequest, $run->head_sha, $body."\n\n".$this->inlineFallback($toPublish), []);
+            $review = $this->client->createReview($pullRequest, $run->head_sha, $this->inlineFallback($toPublish), []);
 
             $run->update(['github_review_id' => $review['id'] ?? null]);
 
@@ -48,17 +88,32 @@ class ReviewPublisher
 
         $run->update(['github_review_id' => $review['id'] ?? null]);
 
-        if ($toPublish->isNotEmpty() && isset($review['id'])) {
+        if (isset($review['id'])) {
             $this->linkComments($run, $toPublish, (int) $review['id']);
         }
     }
 
     /**
-     * The first review of a pull request and agent runs always get a summary; later clean runs stay quiet.
+     * Edit the run's comment, creating it when it is missing or was deleted on GitHub.
      */
-    private function shouldPostEmptyReview(ReviewRun $run): bool
+    private function syncComment(ReviewRun $run, string $body): void
     {
-        return $run->review_agent_id !== null || $run->pullRequest->last_reviewed_sha === null;
+        try {
+            if ($run->github_comment_id !== null && $this->client->updateIssueComment($run->pullRequest, $run->github_comment_id, $body)) {
+                $run->save();
+
+                return;
+            }
+
+            $run->update(['github_comment_id' => $this->client->createIssueComment($run->pullRequest, $body)['id'] ?? null]);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function heading(ReviewRun $run): string
+    {
+        return $run->agent !== null ? "## 🫏 Donkey · {$run->agent->name} agent" : '## 🫏 Donkey review';
     }
 
     /**
@@ -125,7 +180,7 @@ class ReviewPublisher
         $published = $findings->where('status', FindingStatus::Published)->count();
         $suppressed = $findings->where('status', FindingStatus::Suppressed)->count();
 
-        $lines = [$run->agent !== null ? "## 🫏 Donkey · {$run->agent->name} agent" : '## 🫏 Donkey review', ''];
+        $lines = [$this->heading($run), ''];
 
         if (trim($summary) !== '') {
             $lines[] = trim($summary);

@@ -129,6 +129,9 @@ class ReviewPullRequest implements ShouldQueue
             $run->update(['github_check_run_id' => $checkRunId]);
         }
 
+        rescue(fn () => $publisher->begin($run));
+        $run->log('Review started on '.substr($run->head_sha, 0, 7));
+
         try {
             $this->stage($run, ReviewStage::Collecting);
             $context = $contextBuilder->build($run);
@@ -139,6 +142,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             $run->update(['base_sha' => $context->baseSha, 'files_reviewed' => count($context->files)]);
+            $run->log(count($context->files).' '.str('file')->plural(count($context->files)).' to review');
 
             if ($context->files === []) {
                 if ($this->movesReviewBaseline($run)) {
@@ -147,6 +151,7 @@ class ReviewPullRequest implements ShouldQueue
 
                 $reason = $run->agent !== null ? "No changed files match the {$run->agent->name} agent." : 'No reviewable changes.';
                 $this->finish($run, ReviewRunStatus::Skipped, $reason);
+                rescue(fn () => $publisher->conclude($run, "⏭️ {$reason}"));
                 $this->completeCheck($client, $run, 'skipped', 'Nothing to review', $reason);
 
                 return;
@@ -163,6 +168,8 @@ class ReviewPullRequest implements ShouldQueue
                 'graph_summary' => $graph->context?->summary() ?? ($graph->error !== null ? ['error' => $graph->error] : null),
             ]);
 
+            $run->log('Code graph: '.$graph->status->value);
+
             $this->stage($run, ReviewStage::Analyzing);
             $analysis = $this->analyze($run, $analyzer, $context, $graph->context, $knowledge);
             $run->update([
@@ -171,9 +178,11 @@ class ReviewPullRequest implements ShouldQueue
                 'risk_score' => $analysis->riskScore,
                 'summary' => implode("\n\n", $analysis->summaries),
             ]);
+            $run->log(count($analysis->findings).' '.str('finding')->plural(count($analysis->findings))." proposed ({$analysis->inputTokens} tokens in, {$analysis->outputTokens} out)");
 
             if ($this->isSuperseded($run)) {
                 $this->finish($run, ReviewRunStatus::Superseded, 'Newer commits were pushed during the review.');
+                rescue(fn () => $publisher->conclude($run, '⏭️ Newer commits were pushed; the latest commit will be reviewed instead.'));
                 $this->completeCheck($client, $run, 'cancelled', 'Superseded', 'A newer commit will be reviewed instead.');
 
                 return;
@@ -181,6 +190,7 @@ class ReviewPullRequest implements ShouldQueue
 
             $this->stage($run, ReviewStage::Validating);
             $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier, $knowledge));
+            $run->log($findings->countBy(fn (ReviewFinding $finding): string => $finding->status->value)->map(fn (int $count, string $status): string => "{$count} {$status}")->implode(', ') ?: 'No findings');
             $run->update([
                 'tokens_input' => $run->tokens_input + $verifier->inputTokens,
                 'tokens_output' => $run->tokens_output + $verifier->outputTokens,
@@ -229,7 +239,9 @@ class ReviewPullRequest implements ShouldQueue
 
             report($exception);
 
+            $run->log($exception->getMessage(), 'error');
             $this->finish($run, ReviewRunStatus::Failed, $exception->getMessage());
+            rescue(fn () => $publisher->conclude($run, '❌ The review failed. It can be retried from the dashboard.'));
             $this->completeCheck($client, $run, 'neutral', 'Review failed', 'The review could not be completed. It can be retried from the dashboard.');
         }
     }
@@ -241,12 +253,13 @@ class ReviewPullRequest implements ShouldQueue
     private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph, ReviewKnowledge $knowledge): ReviewAnalysis
     {
         $pullRequest = $run->pullRequest;
+        $log = fn (string $message) => $run->log($message);
 
         if ($run->agent !== null) {
-            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge);
+            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge, $log);
         }
 
-        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge);
+        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge, log: $log);
 
         $agents = ReviewAgent::availableFor($pullRequest->repository)->where('run_on_auto_review', true);
 
@@ -258,7 +271,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             try {
-                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge));
+                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge, $log));
             } catch (Throwable $exception) {
                 // One failing agent must not sink the whole review.
                 report($exception);
@@ -457,6 +470,7 @@ class ReviewPullRequest implements ShouldQueue
     {
         $run->update(['stage' => $stage]);
         ReviewRunUpdated::dispatch($run);
+        $run->log("{$stage->label()}: {$stage->description()}");
     }
 
     private function finish(ReviewRun $run, ReviewRunStatus $status, ?string $error = null): void

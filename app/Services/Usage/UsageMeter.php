@@ -6,10 +6,12 @@ use App\Enums\AiFeature;
 use App\Enums\OrganizationRole;
 use App\Mail\BudgetThresholdReached;
 use App\Models\AiUsage;
+use App\Models\ModelPrice;
 use App\Models\Organization;
 use App\Models\PullRequest;
 use App\Models\Repository;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Ai\Responses\Data\Usage;
 
@@ -35,7 +37,7 @@ class UsageMeter
             'model' => $model,
             'input_tokens' => $usage->inputTokens,
             'output_tokens' => $usage->outputTokens,
-            'cost_micros' => $this->costMicros($model, $usage->inputTokens, $usage->outputTokens),
+            'cost_micros' => $this->costMicros($model, $usage->inputTokens, $usage->outputTokens, $organization),
         ]);
 
         if ($record->cost_micros > 0) {
@@ -48,15 +50,29 @@ class UsageMeter
     /**
      * Estimated cost in millionths of a dollar; prices are per million tokens, so tokens × price works out exactly.
      */
-    public function costMicros(string $model, int $inputTokens, int $outputTokens): int
+    public function costMicros(string $model, int $inputTokens, int $outputTokens, ?Organization $organization = null): int
     {
-        $price = config("ai_pricing.models.{$model}");
+        $custom = $organization?->modelPrices()->firstWhere('model', $model);
+        $price = $custom !== null
+            ? ['input' => $custom->input_per_million, 'output' => $custom->output_per_million]
+            : config("ai_pricing.models.{$model}");
 
         if (! is_array($price)) {
             return 0;
         }
 
         return (int) round($inputTokens * (float) $price['input'] + $outputTokens * (float) $price['output']);
+    }
+
+    /**
+     * Price the calls of a model that were recorded at zero cost because it had no price yet.
+     */
+    public function priceUnpricedUsage(Organization $organization, ModelPrice $price): void
+    {
+        $organization->aiUsages()
+            ->where('model', $price->model)
+            ->where('cost_micros', 0)
+            ->update(['cost_micros' => DB::raw("CAST(ROUND(input_tokens * {$price->input_per_million} + output_tokens * {$price->output_per_million}) AS BIGINT)")]);
     }
 
     /**

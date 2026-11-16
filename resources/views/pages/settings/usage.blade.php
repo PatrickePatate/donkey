@@ -2,6 +2,7 @@
 
 use App\Models\Organization;
 use App\Services\Audit\AuditLog;
+use App\Services\Usage\UsageMeter;
 use App\Services\Usage\UsageReport;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
@@ -17,6 +18,11 @@ new #[Title('Usage & cost')] class extends Component
 
     public string $budget = '';
 
+    /** @var list<array{model: string, input: string, output: string}> */
+    public array $prices = [];
+
+    public string $newModel = '';
+
     public function mount(): void
     {
         Gate::authorize('viewUsage', $this->organization);
@@ -25,6 +31,7 @@ new #[Title('Usage & cost')] class extends Component
             $this->month = now()->format('Y-m');
         }
 
+        $this->loadPrices();
         $this->budget = $this->organization->monthly_budget_cents !== null ? number_format($this->organization->monthly_budget_cents / 100, 2, '.', '') : '';
     }
 
@@ -78,6 +85,57 @@ new #[Title('Usage & cost')] class extends Component
         $this->dispatch('toast', message: $cents === null ? 'Budget removed.' : 'Budget saved.', variant: 'success');
     }
 
+    /**
+     * One row per model that has a custom price or was used without any price.
+     */
+    private function loadPrices(): void
+    {
+        $custom = $this->organization->modelPrices()->orderBy('model')->get()->keyBy('model');
+        $unpriced = $this->organization->aiUsages()->distinct()->pluck('model')
+            ->reject(fn (string $model): bool => $custom->has($model) || config("ai_pricing.models.{$model}") !== null);
+
+        $this->prices = $custom->map(fn ($price): array => ['model' => $price->model, 'input' => rtrim(rtrim($price->input_per_million, '0'), '.'), 'output' => rtrim(rtrim($price->output_per_million, '0'), '.')])
+            ->concat($unpriced->map(fn (string $model): array => ['model' => $model, 'input' => '', 'output' => '']))
+            ->values()
+            ->all();
+    }
+
+    public function addModel(): void
+    {
+        $this->validate(['newModel' => ['required', 'string', 'max:255']]);
+
+        $this->prices[] = ['model' => trim($this->newModel), 'input' => '', 'output' => ''];
+        $this->newModel = '';
+    }
+
+    public function savePrices(): void
+    {
+        Gate::authorize('viewUsage', $this->organization);
+
+        $this->validate([
+            'prices.*.model' => ['required', 'string', 'max:255'],
+            'prices.*.input' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'prices.*.output' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+        ]);
+
+        foreach ($this->prices as $row) {
+            if ($row['input'] === '' || $row['output'] === '') {
+                $this->organization->modelPrices()->where('model', $row['model'])->delete();
+
+                continue;
+            }
+
+            $price = $this->organization->modelPrices()->updateOrCreate(['model' => $row['model']], ['input_per_million' => $row['input'], 'output_per_million' => $row['output']]);
+            app(UsageMeter::class)->priceUnpricedUsage($this->organization, $price);
+        }
+
+        app(AuditLog::class)->record($this->organization, 'organization.prices_changed', $this->organization, ['models' => array_column($this->prices, 'model')]);
+
+        unset($this->report);
+        $this->loadPrices();
+        $this->dispatch('toast', message: 'Prices saved.', variant: 'success');
+    }
+
     public function money(int $micros): string
     {
         return UsageReport::money($micros);
@@ -98,7 +156,7 @@ new #[Title('Usage & cost')] class extends Component
         <div class="grid gap-1">
             <h1 class="text-2xl font-semibold tracking-tight">Usage & cost</h1>
             <p class="max-w-2xl text-sm text-muted-foreground">
-                Estimated AI spend of {{ $this->organization->name }}, from token counts and list prices in <code class="text-xs">config/ai_pricing.php</code>.
+                Estimated AI spend of {{ $this->organization->name }}, from token counts and the model prices below (defaults in <code class="text-xs">config/ai_pricing.php</code>).
                 Only owners see this page.
             </p>
         </div>
@@ -158,6 +216,37 @@ new #[Title('Usage & cost')] class extends Component
                 <x-ui.button type="submit" variant="outline">Save budget</x-ui.button>
             </form>
         </div>
+    </x-ui.card>
+
+    <x-ui.card title="Model prices" description="US dollars per million tokens. Leave a model blank to use the default price, or none. Saving also prices past calls of that model that were recorded at $0.">
+        <form wire:submit="savePrices" class="grid gap-4">
+            @forelse ($prices as $index => $row)
+                <div class="grid items-end gap-2 sm:grid-cols-[1fr_8rem_8rem]" wire:key="price-{{ $index }}">
+                    <x-ui.field :label="$loop->first ? 'Model' : null" error="prices.{{ $index }}.model">
+                        <code class="block truncate rounded-md border bg-muted/40 px-3 py-2 text-sm">{{ $row['model'] }}</code>
+                    </x-ui.field>
+                    <x-ui.field :label="$loop->first ? 'Input' : null" error="prices.{{ $index }}.input">
+                        <x-ui.input wire:model="prices.{{ $index }}.input" inputmode="decimal" placeholder="default" aria-label="Input price for {{ $row['model'] }}" />
+                    </x-ui.field>
+                    <x-ui.field :label="$loop->first ? 'Output' : null" error="prices.{{ $index }}.output">
+                        <x-ui.input wire:model="prices.{{ $index }}.output" inputmode="decimal" placeholder="default" aria-label="Output price for {{ $row['model'] }}" />
+                    </x-ui.field>
+                </div>
+            @empty
+                <p class="text-sm text-muted-foreground">Every model used so far has a default price. Add one below to override it.</p>
+            @endforelse
+
+            <div class="flex flex-wrap items-start gap-2">
+                <x-ui.button type="submit">Save prices</x-ui.button>
+            </div>
+        </form>
+
+        <form wire:submit="addModel" class="mt-4 flex flex-wrap items-start gap-2 border-t pt-4">
+            <x-ui.field error="newModel" class="w-72">
+                <x-ui.input wire:model="newModel" placeholder="vendor/model" aria-label="Model id" />
+            </x-ui.field>
+            <x-ui.button type="submit" variant="outline">Add model</x-ui.button>
+        </form>
     </x-ui.card>
 
     <x-ui.card title="Daily spend">

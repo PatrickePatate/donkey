@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
  * @property int $review_run_id
  * @property int $pull_request_id
+ * @property ?int $review_agent_id
  * @property string $fingerprint
  * @property FindingCategory $category
  * @property FindingSeverity $severity
@@ -34,8 +36,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property ?string $verifier_note
  * @property FindingStatus $status
  * @property ?int $github_comment_id
+ * @property ?string $dismissed_by
+ * @property-read ReviewRun $reviewRun
+ * @property-read PullRequest $pullRequest
+ * @property-read ?ReviewAgent $agent
  */
-#[Fillable(['review_run_id', 'pull_request_id', 'fingerprint', 'category', 'severity', 'confidence', 'risk_score', 'file_path', 'start_line', 'end_line', 'title', 'body', 'suggestion', 'code', 'graph_symbol', 'graph_callers', 'status', 'verification', 'verifier_note', 'github_comment_id'])]
+#[Fillable(['review_run_id', 'pull_request_id', 'review_agent_id', 'fingerprint', 'category', 'severity', 'confidence', 'risk_score', 'file_path', 'start_line', 'end_line', 'title', 'body', 'suggestion', 'code', 'graph_symbol', 'graph_callers', 'status', 'verification', 'verifier_note', 'github_comment_id', 'dismissed_by'])]
 class ReviewFinding extends Model
 {
     /** @use HasFactory<ReviewFindingFactory> */
@@ -71,6 +77,22 @@ class ReviewFinding extends Model
     public function pullRequest(): BelongsTo
     {
         return $this->belongsTo(PullRequest::class);
+    }
+
+    /**
+     * @return BelongsTo<ReviewAgent, $this>
+     */
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(ReviewAgent::class, 'review_agent_id');
+    }
+
+    /**
+     * @return HasMany<ConversationMessage, $this>
+     */
+    public function conversationMessages(): HasMany
+    {
+        return $this->hasMany(ConversationMessage::class);
     }
 
     public function lineLabel(): string

@@ -54,11 +54,11 @@ class ReviewPublisher
     }
 
     /**
-     * The first review of a pull request always gets a summary; later clean runs stay quiet.
+     * The first review of a pull request and agent runs always get a summary; later clean runs stay quiet.
      */
     private function shouldPostEmptyReview(ReviewRun $run): bool
     {
-        return $run->pullRequest->last_reviewed_sha === null;
+        return $run->review_agent_id !== null || $run->pullRequest->last_reviewed_sha === null;
     }
 
     /**
@@ -83,7 +83,15 @@ class ReviewPublisher
 
     public function commentBody(ReviewFinding $finding): string
     {
+        $lines = [];
+
+        if ($finding->agent !== null) {
+            $lines[] = "<sub>🤖 {$finding->agent->name} agent</sub>";
+            $lines[] = '';
+        }
+
         $lines = [
+            ...$lines,
             "**{$finding->severity->emoji()} {$finding->severity->label()} · {$finding->category->label()}** — {$finding->title}",
             '',
             $finding->body,
@@ -117,7 +125,7 @@ class ReviewPublisher
         $published = $findings->where('status', FindingStatus::Published)->count();
         $suppressed = $findings->where('status', FindingStatus::Suppressed)->count();
 
-        $lines = ['## 🫏 Donkey review', ''];
+        $lines = [$run->agent !== null ? "## 🫏 Donkey · {$run->agent->name} agent" : '## 🫏 Donkey review', ''];
 
         if (trim($summary) !== '') {
             $lines[] = trim($summary);
@@ -147,7 +155,7 @@ class ReviewPublisher
         }
 
         $lines[] = '';
-        $lines[] = "<sub>Risk score {$run->risk_score}/100 · Comment `@{$handle} review` after new commits or `@{$handle} full review` to start over.</sub>";
+        $lines[] = "<sub>Risk score {$run->risk_score}/100 · Comment `@{$handle} review` after new commits, `@{$handle} full review` to start over, or `@{$handle} help` for more.</sub>";
 
         return implode("\n", $lines);
     }

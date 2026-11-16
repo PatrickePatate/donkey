@@ -7,10 +7,13 @@ use App\Enums\FindingVerification;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Events\ReviewRunUpdated;
+use App\Models\ReviewAgent;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
+use App\Services\Graph\GraphContext;
 use App\Services\Graph\GraphContextProvider;
+use App\Services\Review\FilePatch;
 use App\Services\Review\FindingVerifierService;
 use App\Services\Review\ProposedFinding;
 use App\Services\Review\ReviewAnalysis;
@@ -63,7 +66,7 @@ class ReviewPullRequest implements ShouldQueue
         ReviewPublisher $publisher,
         PullRequestClient $client,
     ): void {
-        $run = $this->run->fresh(['pullRequest.repository.organization', 'pullRequest.repository.installation']);
+        $run = $this->run->fresh(['agent', 'pullRequest.repository.organization', 'pullRequest.repository.installation']);
 
         if ($run === null || $run->status->isFinished()) {
             return;
@@ -87,22 +90,35 @@ class ReviewPullRequest implements ShouldQueue
             'status' => ReviewRunStatus::Running,
             'started_at' => now(),
             'provider' => config('reviews.provider'),
-            'model' => config('reviews.model'),
+            'model' => filled($run->agent?->model) ? $run->agent->model : config('reviews.model'),
             'risk_threshold' => $pullRequest->repository->effectiveRiskThreshold(),
         ]);
 
-        $checkRunId = $client->createCheckRun($pullRequest, config('reviews.check_run_name'), $run->head_sha, route('pull-requests.show', $pullRequest));
-        $run->update(['github_check_run_id' => $checkRunId]);
+        if (! $run->is_dry_run) {
+            $checkRunName = config('reviews.check_run_name').($run->agent !== null ? " · {$run->agent->name}" : '');
+            $checkRunId = $client->createCheckRun($pullRequest, $checkRunName, $run->head_sha, route('pull-requests.show', ['pullRequest' => $pullRequest, 'run' => $run->id]));
+            $run->update(['github_check_run_id' => $checkRunId]);
+        }
 
         try {
             $this->stage($run, ReviewStage::Collecting);
             $context = $contextBuilder->build($run);
+
+            if ($run->agent !== null) {
+                $agent = $run->agent;
+                $context = $context->onlyFiles(fn (FilePatch $file): bool => $agent->matchesPath($file->path));
+            }
+
             $run->update(['base_sha' => $context->baseSha, 'files_reviewed' => count($context->files)]);
 
             if ($context->files === []) {
-                $pullRequest->update(['last_reviewed_sha' => $run->head_sha]);
-                $this->finish($run, ReviewRunStatus::Skipped, 'No reviewable changes.');
-                $this->completeCheck($client, $run, 'skipped', 'Nothing to review', 'No reviewable changes in this push.');
+                if ($this->movesReviewBaseline($run)) {
+                    $pullRequest->update(['last_reviewed_sha' => $run->head_sha]);
+                }
+
+                $reason = $run->agent !== null ? "No changed files match the {$run->agent->name} agent." : 'No reviewable changes.';
+                $this->finish($run, ReviewRunStatus::Skipped, $reason);
+                $this->completeCheck($client, $run, 'skipped', 'Nothing to review', $reason);
 
                 return;
             }
@@ -117,7 +133,7 @@ class ReviewPullRequest implements ShouldQueue
             ]);
 
             $this->stage($run, ReviewStage::Analyzing);
-            $analysis = $analyzer->analyze($pullRequest, $context, $graph->context);
+            $analysis = $this->analyze($run, $analyzer, $context, $graph->context);
             $run->update([
                 'tokens_input' => $analysis->inputTokens,
                 'tokens_output' => $analysis->outputTokens,
@@ -139,12 +155,24 @@ class ReviewPullRequest implements ShouldQueue
                 'tokens_output' => $run->tokens_output + $verifier->outputTokens,
                 'findings_rejected' => $findings->where('status', FindingStatus::Rejected)->count(),
             ]);
-            $this->markOutdatedFindings($run, $context, $findings);
+
+            if ($run->is_dry_run) {
+                $this->finish($run, ReviewRunStatus::Completed);
+
+                return;
+            }
+
+            if ($run->agent === null) {
+                $this->markOutdatedFindings($run, $context, $findings);
+            }
 
             $this->stage($run, ReviewStage::Publishing);
             $publisher->publish($run, $findings, (string) $run->summary);
 
-            $pullRequest->update(['last_reviewed_sha' => $run->head_sha]);
+            if ($this->movesReviewBaseline($run)) {
+                $pullRequest->update(['last_reviewed_sha' => $run->head_sha]);
+            }
+
             $this->finish($run, ReviewRunStatus::Completed);
 
             $published = $findings->where('status', FindingStatus::Published)->count();
@@ -164,6 +192,48 @@ class ReviewPullRequest implements ShouldQueue
     }
 
     /**
+     * The general review plus every agent set to join automatic reviews whose files changed,
+     * or only the requested agent for an agent run.
+     */
+    private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph): ReviewAnalysis
+    {
+        $pullRequest = $run->pullRequest;
+
+        if ($run->agent !== null) {
+            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent);
+        }
+
+        $analysis = $analyzer->analyze($pullRequest, $context, $graph);
+
+        $agents = ReviewAgent::availableFor($pullRequest->repository)->where('run_on_auto_review', true);
+
+        foreach ($agents as $agent) {
+            $agentContext = $context->onlyFiles(fn (FilePatch $file): bool => $agent->matchesPath($file->path));
+
+            if ($agentContext->files === []) {
+                continue;
+            }
+
+            try {
+                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent));
+            } catch (Throwable $exception) {
+                // One failing agent must not sink the whole review.
+                report($exception);
+            }
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * Only live, general reviews move the commit that incremental reviews start from.
+     */
+    private function movesReviewBaseline(ReviewRun $run): bool
+    {
+        return ! $run->is_dry_run && $run->agent === null;
+    }
+
+    /**
      * Decide each finding's fate: duplicate of an earlier comment, below the risk gate,
      * rejected by the verifier, or published (with the verifier's adjusted assessment).
      *
@@ -171,18 +241,22 @@ class ReviewPullRequest implements ShouldQueue
      */
     private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier): array
     {
-        $alreadyPublished = ReviewFinding::query()
+        $previous = ReviewFinding::query()
             ->where('pull_request_id', $run->pull_request_id)
             ->where('review_run_id', '!=', $run->id)
-            ->where('status', FindingStatus::Published)
-            ->pluck('fingerprint')
-            ->all();
+            ->whereIn('status', [FindingStatus::Published, FindingStatus::Dismissed])
+            ->whereHas('reviewRun', fn ($query) => $query->where('is_dry_run', false))
+            ->get(['fingerprint', 'status']);
+
+        $alreadyPublished = $previous->where('status', FindingStatus::Published)->pluck('fingerprint')->all();
+        $dismissed = $previous->where('status', FindingStatus::Dismissed)->pluck('fingerprint')->all();
 
         $decisions = [];
         $candidates = [];
 
         foreach ($analysis->findings as $index => $finding) {
             $status = match (true) {
+                in_array($finding->fingerprint(), $dismissed, true) => FindingStatus::Dismissed,
                 in_array($finding->fingerprint(), $alreadyPublished, true) => FindingStatus::Duplicate,
                 $finding->riskScore() >= $run->risk_threshold => FindingStatus::Published,
                 default => FindingStatus::Suppressed,
@@ -238,6 +312,7 @@ class ReviewPullRequest implements ShouldQueue
 
             return $run->findings()->create([
                 'pull_request_id' => $run->pull_request_id,
+                'review_agent_id' => $finding->agentId,
                 'fingerprint' => $finding->fingerprint(),
                 'category' => $finding->category,
                 'severity' => $finding->severity,
@@ -272,6 +347,7 @@ class ReviewPullRequest implements ShouldQueue
             ->where('pull_request_id', $run->pull_request_id)
             ->where('review_run_id', '!=', $run->id)
             ->where('status', FindingStatus::Published)
+            ->whereHas('reviewRun', fn ($query) => $query->where('is_dry_run', false))
             ->whereIn('file_path', array_keys($context->files))
             ->whereNotIn('fingerprint', $current)
             ->get()

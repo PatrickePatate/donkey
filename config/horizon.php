@@ -199,7 +199,7 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['webhooks', 'github', 'reviews', 'graphs', 'default'],
+            'queue' => ['webhooks', 'github', 'conversations', 'reviews', 'graphs', 'default'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

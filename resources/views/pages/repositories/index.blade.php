@@ -144,7 +144,7 @@ new #[Title('Repositories')] class extends Component
     @if (config('graph.enabled') && ! $this->graphAvailable && $this->repositories->isNotEmpty())
         <x-ui.alert title="Code graph unavailable">
             <x-slot:icon><x-ui.icon name="activity" /></x-slot:icon>
-            <p><code>kodus-graph</code> isn't installed on this server, so reviews run on the diff alone, without callers, contract changes and test coverage. Install it with <code>bun install -g @kodus/kodus-graph</code>.</p>
+            <p><code>kodus-graph</code> isn't installed on this server, so reviews run on the diff alone, without callers, contract changes and test coverage. Install it with <code>npm install</code> then <code>npm run graph:setup</code>.</p>
         </x-ui.alert>
     @endif
 

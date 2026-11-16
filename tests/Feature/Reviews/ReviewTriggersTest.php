@@ -165,10 +165,10 @@ it('ignores comments from untrusted authors and bots', function (string $associa
     'bot' => ['MEMBER', 'Bot'],
 ]);
 
-it('replies with help for unknown commands', function () {
+it('replies with the list of commands when asked for help', function () {
     PullRequest::factory()->for($this->repository)->create(['number' => 7]);
 
-    processEvent('issue_comment', 'created', $this->installation, commentPayload($this->repository, '@donkey dance'));
+    processEvent('issue_comment', 'created', $this->installation, commentPayload($this->repository, '@donkey help'));
 
     expect(ReviewRun::count())->toBe(0);
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/repos/acme/app/issues/7/comments')

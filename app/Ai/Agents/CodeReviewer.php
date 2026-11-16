@@ -4,6 +4,7 @@ namespace App\Ai\Agents;
 
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
+use App\Models\ReviewAgent;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
@@ -16,9 +17,42 @@ class CodeReviewer implements Agent, HasStructuredOutput
 {
     use Promptable;
 
+    /**
+     * @param  ?ReviewAgent  $agent  Turns the reviewer into this specialist, with the organization's own instructions.
+     */
+    public function __construct(public ?ReviewAgent $agent = null) {}
+
     public function instructions(): string
     {
-        $categories = implode(', ', array_column(FindingCategory::cases(), 'value'));
+        return $this->baseInstructions().$this->agentInstructions();
+    }
+
+    private function agentInstructions(): string
+    {
+        if ($this->agent === null) {
+            return '';
+        }
+
+        $focus = trim($this->agent->instructions);
+
+        return <<<PROMPT
+
+
+        ## Specialist focus: {$this->agent->name}
+
+        In this review you act as the "{$this->agent->name}" agent configured by the repository's organization.
+        Report only findings within this focus and ignore everything else, even real problems outside it; the
+        general reviewer covers those. The organization wrote these instructions for you:
+
+        <agent_instructions>
+        {$focus}
+        </agent_instructions>
+        PROMPT;
+    }
+
+    private function baseInstructions(): string
+    {
+        $categories = implode(', ', $this->categoryValues());
         $severities = implode(', ', array_column(FindingSeverity::cases(), 'value'));
 
         return <<<PROMPT
@@ -70,7 +104,7 @@ class CodeReviewer implements Agent, HasStructuredOutput
                 'file' => $schema->string()->required(),
                 'start_line' => $schema->integer()->min(1)->required(),
                 'end_line' => $schema->integer()->min(1)->required(),
-                'category' => $schema->string()->enum(array_column(FindingCategory::cases(), 'value'))->required(),
+                'category' => $schema->string()->enum($this->categoryValues())->required(),
                 'severity' => $schema->string()->enum(array_column(FindingSeverity::cases(), 'value'))->required(),
                 'confidence' => $schema->integer()->min(0)->max(100)->required(),
                 'title' => $schema->string()->required(),
@@ -78,5 +112,13 @@ class CodeReviewer implements Agent, HasStructuredOutput
                 'suggestion' => $schema->string()->required(),
             ]))->required(),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function categoryValues(): array
+    {
+        return array_column($this->agent?->allowedCategories() ?? FindingCategory::cases(), 'value');
     }
 }

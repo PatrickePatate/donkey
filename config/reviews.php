@@ -102,4 +102,21 @@ return [
 
     'max_impact_boost' => (float) env('REVIEW_MAX_IMPACT_BOOST', 0.3),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Conversations
+    |--------------------------------------------------------------------------
+    |
+    | Answers to questions asked to the bot in pull request comments. The diff
+    | budget bounds how much code goes into each answer's prompt.
+    |
+    */
+
+    'conversation' => [
+        'model' => env('CONVERSATION_AI_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
+        'max_diff_characters' => (int) env('CONVERSATION_MAX_DIFF_CHARACTERS', 40_000),
+        'max_history_messages' => (int) env('CONVERSATION_MAX_HISTORY_MESSAGES', 12),
+        'max_findings' => 20,
+    ],
+
 ];

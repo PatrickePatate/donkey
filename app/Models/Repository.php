@@ -51,6 +51,14 @@ class Repository extends Model
     }
 
     /**
+     * @return HasMany<ReviewAgent, $this>
+     */
+    public function reviewAgents(): HasMany
+    {
+        return $this->hasMany(ReviewAgent::class);
+    }
+
+    /**
      * @return HasMany<RepositoryGraph, $this>
      */
     public function graphs(): HasMany

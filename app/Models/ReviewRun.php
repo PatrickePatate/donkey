@@ -21,8 +21,10 @@ use Illuminate\Support\Carbon;
  * @property string $head_sha
  * @property ?string $base_sha
  * @property ReviewTrigger $trigger
+ * @property ?int $review_agent_id
  * @property ?string $triggered_by
  * @property bool $is_full
+ * @property bool $is_dry_run
  * @property ReviewRunStatus $status
  * @property ?ReviewStage $stage
  * @property ?int $risk_score
@@ -45,8 +47,9 @@ use Illuminate\Support\Carbon;
  * @property ?Carbon $completed_at
  * @property Carbon $created_at
  * @property-read PullRequest $pullRequest
+ * @property-read ?ReviewAgent $agent
  */
-#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'triggered_by', 'is_full', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'error', 'started_at', 'completed_at'])]
+#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'review_agent_id', 'triggered_by', 'is_full', 'is_dry_run', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'error', 'started_at', 'completed_at'])]
 class ReviewRun extends Model
 {
     /** @use HasFactory<ReviewRunFactory> */
@@ -59,6 +62,7 @@ class ReviewRun extends Model
             'status' => ReviewRunStatus::class,
             'stage' => ReviewStage::class,
             'is_full' => 'boolean',
+            'is_dry_run' => 'boolean',
             'risk_score' => 'integer',
             'risk_threshold' => 'integer',
             'graph_status' => RunGraphStatus::class,
@@ -81,6 +85,16 @@ class ReviewRun extends Model
     public function pullRequest(): BelongsTo
     {
         return $this->belongsTo(PullRequest::class);
+    }
+
+    /**
+     * The agent this run was dedicated to, or null for a regular review.
+     *
+     * @return BelongsTo<ReviewAgent, $this>
+     */
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(ReviewAgent::class, 'review_agent_id');
     }
 
     /**

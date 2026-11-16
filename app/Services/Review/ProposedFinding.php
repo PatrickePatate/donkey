@@ -24,6 +24,7 @@ final class ProposedFinding
         public readonly ?string $graphSymbol = null,
         public readonly ?int $graphCallers = null,
         public readonly float $impactBoost = 0.0,
+        public readonly ?int $agentId = null,
     ) {}
 
     /**
@@ -41,7 +42,7 @@ final class ProposedFinding
     {
         return new self(
             $this->path, $this->startLine, $this->endLine, $this->category, $this->severity, $this->confidence,
-            $this->title, $this->body, $this->suggestion, $this->code, $symbol, $callers, $boost,
+            $this->title, $this->body, $this->suggestion, $this->code, $symbol, $callers, $boost, $this->agentId,
         );
     }
 
@@ -52,7 +53,18 @@ final class ProposedFinding
     {
         return new self(
             $this->path, $this->startLine, $this->endLine, $this->category, $severity, max(0, min(100, $confidence)),
-            $this->title, $this->body, $this->suggestion, $this->code, $this->graphSymbol, $this->graphCallers, $this->impactBoost,
+            $this->title, $this->body, $this->suggestion, $this->code, $this->graphSymbol, $this->graphCallers, $this->impactBoost, $this->agentId,
+        );
+    }
+
+    /**
+     * Copy attributed to the review agent that raised it.
+     */
+    public function fromAgent(?int $agentId): self
+    {
+        return new self(
+            $this->path, $this->startLine, $this->endLine, $this->category, $this->severity, $this->confidence,
+            $this->title, $this->body, $this->suggestion, $this->code, $this->graphSymbol, $this->graphCallers, $this->impactBoost, $agentId,
         );
     }
 

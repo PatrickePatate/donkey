@@ -141,11 +141,64 @@ class PullRequestClient
             ->post($this->repoPath($pullRequest)."/issues/comments/{$commentId}/reactions", ['content' => $content]);
     }
 
-    public function createIssueComment(PullRequest $pullRequest, string $body): void
+    public function reactToReviewComment(PullRequest $pullRequest, int $commentId, string $content): void
     {
         $this->request($pullRequest)
+            ->post($this->repoPath($pullRequest)."/pulls/comments/{$commentId}/reactions", ['content' => $content]);
+    }
+
+    /**
+     * Comment on the pull request conversation.
+     *
+     * @return array<string, mixed>
+     */
+    public function createIssueComment(PullRequest $pullRequest, string $body): array
+    {
+        return $this->request($pullRequest)
             ->post($this->repoPath($pullRequest)."/issues/{$pullRequest->number}/comments", ['body' => $body])
-            ->throw();
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Reply in an inline review thread. GitHub only accepts the thread's top-level comment id.
+     *
+     * @return array<string, mixed>
+     */
+    public function replyToReviewComment(PullRequest $pullRequest, int $threadCommentId, string $body): array
+    {
+        return $this->request($pullRequest)
+            ->post($this->repoPath($pullRequest)."/pulls/{$pullRequest->number}/comments/{$threadCommentId}/replies", ['body' => $body])
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Every comment of an inline review thread, oldest first, starting with the top-level comment.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function reviewThread(PullRequest $pullRequest, int $threadCommentId): array
+    {
+        $thread = [];
+        $page = 1;
+
+        do {
+            $batch = $this->request($pullRequest)
+                ->get($this->repoPath($pullRequest)."/pulls/{$pullRequest->number}/comments", ['per_page' => 100, 'page' => $page, 'sort' => 'created', 'direction' => 'asc'])
+                ->throw()
+                ->json();
+
+            foreach ($batch as $comment) {
+                if (($comment['id'] ?? null) === $threadCommentId || ($comment['in_reply_to_id'] ?? null) === $threadCommentId) {
+                    $thread[] = $comment;
+                }
+            }
+
+            $page++;
+        } while (count($batch) === 100 && $page <= 10);
+
+        return $thread;
     }
 
     /**

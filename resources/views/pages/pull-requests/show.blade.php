@@ -5,7 +5,9 @@ use App\Enums\FindingStatus;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
+use App\Models\ConversationMessage;
 use App\Models\PullRequest;
+use App\Models\ReviewAgent;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use Illuminate\Database\Eloquent\Collection;
@@ -46,6 +48,7 @@ new class extends Component
     {
         return [
             "echo-private:organizations.{$this->pullRequest->repository->organization_id},.review.updated" => 'onReviewUpdated',
+            "echo-private:organizations.{$this->pullRequest->repository->organization_id},.conversation.updated" => 'onConversationUpdated',
         ];
     }
 
@@ -65,12 +68,53 @@ new class extends Component
     }
 
     /**
+     * @param  array{pull_request_id: int}  $payload
+     */
+    public function onConversationUpdated(array $payload): void
+    {
+        if ($payload['pull_request_id'] !== $this->pullRequest->id) {
+            $this->skipRender();
+
+            return;
+        }
+
+        $this->pullRequest->refresh();
+        unset($this->conversation, $this->findings, $this->findingCounts);
+    }
+
+    /**
      * @return Collection<int, ReviewRun>
      */
     #[Computed]
     public function runs(): Collection
     {
-        return $this->pullRequest->reviewRuns()->latest('id')->limit(20)->get();
+        return $this->pullRequest->reviewRuns()->with('agent')->latest('id')->limit(20)->get();
+    }
+
+    /**
+     * @return Collection<int, ReviewAgent>
+     */
+    #[Computed]
+    public function agents(): Collection
+    {
+        return ReviewAgent::availableFor($this->pullRequest->repository);
+    }
+
+    /**
+     * Questions asked to the bot on GitHub and its answers, oldest first.
+     *
+     * @return Collection<int, ConversationMessage>
+     */
+    #[Computed]
+    public function conversation(): Collection
+    {
+        return $this->pullRequest->conversationMessages()
+            ->with('finding')
+            ->latest('id')
+            ->limit(40)
+            ->get()
+            ->reverse()
+            ->values();
     }
 
     #[Computed]
@@ -109,6 +153,7 @@ new class extends Component
         }
 
         return $this->selectedRun->findings()
+            ->with('agent')
             ->when($this->findingStatus !== 'all', fn ($query) => $query->where('status', $this->findingStatus))
             ->orderByDesc('risk_score')
             ->get();
@@ -138,6 +183,35 @@ new class extends Component
         $this->dispatch('toast', message: 'Review queued.', variant: 'success');
     }
 
+    public function runAgent(int $agentId, StartReview $startReview): void
+    {
+        Gate::authorize('review', $this->pullRequest);
+
+        $agent = $this->agents->firstWhere('id', $agentId);
+
+        if ($agent === null || ! $this->pullRequest->isOpen()) {
+            $this->dispatch('toast', message: 'This agent cannot run on this pull request.', variant: 'destructive');
+
+            return;
+        }
+
+        $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, source: (string) Str::uuid(), agent: $agent);
+
+        $this->selectedRunId = $run?->id;
+        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+
+        $this->dispatch('toast', message: "{$agent->name} agent queued.", variant: 'success');
+    }
+
+    public function toggleAutoReview(): void
+    {
+        Gate::authorize('review', $this->pullRequest);
+
+        $this->pullRequest->update(['auto_review_paused' => ! $this->pullRequest->auto_review_paused]);
+
+        $this->dispatch('toast', message: $this->pullRequest->auto_review_paused ? 'Automatic reviews paused on this pull request.' : 'Automatic reviews resumed.', variant: 'success');
+    }
+
     public function markdown(string $text): string
     {
         return Str::markdown($text, ['html_input' => 'strip', 'allow_unsafe_links' => false]);
@@ -160,6 +234,9 @@ new class extends Component
                 @if ($pullRequest->is_draft)
                     <x-ui.badge variant="outline">Draft</x-ui.badge>
                 @endif
+                @if ($pullRequest->auto_review_paused)
+                    <x-ui.badge variant="warning">Auto-review paused</x-ui.badge>
+                @endif
             </p>
         </div>
 
@@ -168,6 +245,28 @@ new class extends Component
                 <x-ui.icon name="external-link" /> GitHub
             </x-ui.button>
             @can('review', $pullRequest)
+                <x-ui.button variant="outline" wire:click="toggleAutoReview" :title="$pullRequest->auto_review_paused ? 'Review new commits automatically again' : 'Stop reviewing new commits automatically'">
+                    {{ $pullRequest->auto_review_paused ? 'Resume auto-review' : 'Pause auto-review' }}
+                </x-ui.button>
+                @if ($this->agents->isNotEmpty())
+                    <x-ui.dropdown align="end" width="w-64">
+                        <x-slot:trigger>
+                            <x-ui.button variant="outline" :disabled="! $pullRequest->isOpen()">
+                                <x-ui.icon name="bot" /> Run agent
+                            </x-ui.button>
+                        </x-slot:trigger>
+                        @foreach ($this->agents as $agent)
+                            <x-ui.dropdown-item wire:click="runAgent({{ $agent->id }})" wire:key="run-agent-{{ $agent->id }}">
+                                <span class="grid text-left">
+                                    <span>{{ $agent->name }}</span>
+                                    @if ($agent->description)
+                                        <span class="text-xs text-muted-foreground">{{ $agent->description }}</span>
+                                    @endif
+                                </span>
+                            </x-ui.dropdown-item>
+                        @endforeach
+                    </x-ui.dropdown>
+                @endif
                 <x-ui.button wire:click="startReview" :disabled="! $pullRequest->isOpen()">
                     <x-ui.icon name="play" /> Review now
                 </x-ui.button>
@@ -192,7 +291,7 @@ new class extends Component
             <div class="grid min-w-0 content-start gap-6">
                 <x-ui.card>
                     <x-slot:title>
-                        Review #{{ $run->id }}
+                        {{ $run->agent !== null ? $run->agent->name.' agent' : 'Review' }} #{{ $run->id }}
                     </x-slot:title>
                     <div class="grid gap-6">
                         <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -200,8 +299,11 @@ new class extends Component
                             <span>{{ $run->trigger->label() }}{{ $run->triggered_by ? ' by '.$run->triggered_by : '' }}</span>
                             <span>·</span>
                             <code class="text-xs">{{ Str::substr($run->head_sha, 0, 7) }}</code>
-                            @if ($run->is_full)
+                            @if ($run->is_full && $run->agent === null)
                                 <x-ui.badge variant="outline">Full review</x-ui.badge>
+                            @endif
+                            @if ($run->is_dry_run)
+                                <x-ui.badge variant="warning">Test run · not posted</x-ui.badge>
                             @endif
                         </div>
 
@@ -251,6 +353,9 @@ new class extends Component
                                     <div class="flex flex-wrap items-center gap-2">
                                         <x-ui.badge :variant="$finding->severity->badgeVariant()">{{ $finding->severity->label() }}</x-ui.badge>
                                         <x-ui.badge variant="outline">{{ $finding->category->label() }}</x-ui.badge>
+                                        @if ($finding->agent !== null)
+                                            <x-ui.badge variant="secondary"><x-ui.icon name="bot" /> {{ $finding->agent->name }}</x-ui.badge>
+                                        @endif
                                         @if ($findingStatus === 'all')
                                             <x-ui.badge :variant="$finding->status->badgeVariant()">{{ $finding->status->label() }}</x-ui.badge>
                                         @endif
@@ -268,6 +373,9 @@ new class extends Component
                                             <x-ui.badge variant="success" class="ml-1"><x-ui.icon name="check" /> Verified</x-ui.badge>
                                         @endif
                                     </p>
+                                    @if ($finding->status === FindingStatus::Dismissed && $finding->dismissed_by)
+                                        <p class="text-xs text-muted-foreground">Dismissed on GitHub by {{ '@'.$finding->dismissed_by }}.</p>
+                                    @endif
                                     @if ($finding->status === FindingStatus::Rejected && $finding->verifier_note)
                                         <x-ui.alert>
                                             <x-slot:icon><x-ui.icon name="shield" /></x-slot:icon>
@@ -286,6 +394,38 @@ new class extends Component
                                 <p class="py-6 text-center text-sm text-muted-foreground">No {{ $findingStatus === 'all' ? '' : $findingStatus.' ' }}findings in this review.</p>
                             @endforelse
                         </div>
+                    </x-ui.card>
+                @endif
+
+                @if ($this->conversation->isNotEmpty())
+                    <x-ui.card title="Conversation" :description="'Questions asked to @'.$pullRequest->repository->organization->bot_handle.' on GitHub.'">
+                        <ol class="grid gap-4">
+                            @foreach ($this->conversation as $message)
+                                @php($fromBot = $message->role === \App\Enums\ConversationRole::Bot)
+                                <li wire:key="message-{{ $message->id }}" @class(['grid min-w-0 gap-1.5 rounded-lg border p-3', 'bg-muted/40' => $fromBot, 'ml-6' => $fromBot])>
+                                    <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                        @if ($fromBot)
+                                            <x-ui.icon name="bot" class="size-3.5" />
+                                        @else
+                                            <x-ui.icon name="message-square" class="size-3.5" />
+                                        @endif
+                                        <span class="font-medium text-foreground">{{ '@'.$message->author_login }}</span>
+                                        @if ($message->finding !== null && ! $fromBot)
+                                            <span class="truncate">on “{{ Str::limit($message->finding->title, 60) }}”</span>
+                                        @elseif ($message->isInThread() && ! $fromBot)
+                                            <span>in a review thread</span>
+                                        @endif
+                                        @if ($message->status === \App\Enums\ConversationStatus::Pending)
+                                            <x-ui.badge variant="secondary" class="animate-pulse">Answering…</x-ui.badge>
+                                        @elseif ($message->status === \App\Enums\ConversationStatus::Failed)
+                                            <x-ui.badge variant="destructive">Failed</x-ui.badge>
+                                        @endif
+                                        <span class="ml-auto">{{ $message->created_at->diffForHumans(short: true) }}</span>
+                                    </div>
+                                    <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">{!! $this->markdown($message->body) !!}</div>
+                                </li>
+                            @endforeach
+                        </ol>
                     </x-ui.card>
                 @endif
             </div>
@@ -380,7 +520,7 @@ new class extends Component
                                         'bg-muted-foreground' => in_array($item->status, [ReviewRunStatus::Skipped, ReviewRunStatus::Superseded], true),
                                     ])></span>
                                     <code class="text-xs">{{ Str::substr($item->head_sha, 0, 7) }}</code>
-                                    <span class="flex-1 truncate text-muted-foreground">{{ $item->trigger->label() }}</span>
+                                    <span class="flex-1 truncate text-muted-foreground">{{ $item->agent?->name ?? $item->trigger->label() }}{{ $item->is_dry_run ? ' · test' : '' }}</span>
                                     <span class="text-xs text-muted-foreground">{{ $item->created_at->diffForHumans(short: true) }}</span>
                                 </button>
                             </li>

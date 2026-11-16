@@ -20,6 +20,22 @@ final class ReviewContext
         public readonly array $skippedFiles,
     ) {}
 
+    /**
+     * The same context restricted to the files that pass the filter, e.g. an agent's globs.
+     *
+     * @param  callable(FilePatch): bool  $filter
+     */
+    public function onlyFiles(callable $filter): self
+    {
+        return new self(
+            baseSha: $this->baseSha,
+            isIncremental: $this->isIncremental,
+            files: array_filter($this->files, $filter),
+            instructions: $this->instructions,
+            skippedFiles: $this->skippedFiles,
+        );
+    }
+
     public function file(string $path): ?FilePatch
     {
         return $this->files[$path] ?? null;

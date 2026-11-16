@@ -30,6 +30,9 @@ Route::middleware('auth')->group(function () {
         Route::livewire('/repositories', 'pages::repositories.index')->name('repositories.index');
         Route::livewire('/pull-requests', 'pages::pull-requests.index')->name('pull-requests.index');
         Route::livewire('/pull-requests/{pullRequest}', 'pages::pull-requests.show')->name('pull-requests.show');
+        Route::livewire('/agents', 'pages::agents.index')->name('agents.index');
+        Route::livewire('/agents/create', 'pages::agents.edit')->name('agents.create');
+        Route::livewire('/agents/{agent}/edit', 'pages::agents.edit')->name('agents.edit');
         Route::livewire('/settings/organization', 'pages::settings.organization')->name('settings.organization');
         Route::livewire('/settings/members', 'pages::settings.members')->name('settings.members');
 

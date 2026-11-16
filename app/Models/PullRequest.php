@@ -26,9 +26,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $base_ref
  * @property string $html_url
  * @property ?string $last_reviewed_sha
+ * @property bool $auto_review_paused
  * @property-read Repository $repository
  */
-#[Fillable(['repository_id', 'github_id', 'number', 'title', 'body', 'author_login', 'state', 'is_draft', 'head_sha', 'base_sha', 'head_ref', 'base_ref', 'html_url', 'last_reviewed_sha'])]
+#[Fillable(['repository_id', 'github_id', 'number', 'title', 'body', 'author_login', 'state', 'is_draft', 'head_sha', 'base_sha', 'head_ref', 'base_ref', 'html_url', 'last_reviewed_sha', 'auto_review_paused'])]
 class PullRequest extends Model
 {
     /** @use HasFactory<PullRequestFactory> */
@@ -40,6 +41,7 @@ class PullRequest extends Model
             'github_id' => 'integer',
             'number' => 'integer',
             'is_draft' => 'boolean',
+            'auto_review_paused' => 'boolean',
         ];
     }
 
@@ -73,6 +75,14 @@ class PullRequest extends Model
     public function findings(): HasMany
     {
         return $this->hasMany(ReviewFinding::class);
+    }
+
+    /**
+     * @return HasMany<ConversationMessage, $this>
+     */
+    public function conversationMessages(): HasMany
+    {
+        return $this->hasMany(ConversationMessage::class);
     }
 
     public function isOpen(): bool

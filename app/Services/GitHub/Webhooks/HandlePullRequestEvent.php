@@ -37,6 +37,7 @@ class HandlePullRequestEvent
             in_array($event->action, self::REVIEWABLE_ACTIONS, true)
             && $pullRequest->isOpen()
             && ! $pullRequest->is_draft
+            && ! $pullRequest->auto_review_paused
             && $repository->autoReviewEnabled()
         ) {
             $this->startReview->handle($pullRequest, ReviewTrigger::Auto, $payload['sender']['login'] ?? null);

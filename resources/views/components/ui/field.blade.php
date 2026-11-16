@@ -5,7 +5,7 @@
     'hint' => null,
 ])
 
-<div {{ $attributes->class('grid gap-2') }}>
+<div {{ $attributes->class('grid content-start gap-2') }}>
     @if ($label)
         <x-ui.label :for="$for">{{ $label }}</x-ui.label>
     @endif

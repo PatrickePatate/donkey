@@ -6,6 +6,7 @@ use App\Ai\Agents\CodeReviewer;
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
 use App\Models\PullRequest;
+use App\Models\ReviewAgent;
 use App\Services\Graph\GraphContext;
 
 /**
@@ -13,7 +14,10 @@ use App\Services\Graph\GraphContext;
  */
 class ReviewAnalyzer
 {
-    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null): ReviewAnalysis
+    /**
+     * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
+     */
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -23,10 +27,10 @@ class ReviewAnalyzer
         $discarded = 0;
 
         foreach ($context->chunks((int) config('reviews.chunk_characters')) as $chunk) {
-            $response = CodeReviewer::make()->prompt(
+            $response = CodeReviewer::make(agent: $agent)->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph),
                 provider: config('reviews.provider'),
-                model: config('reviews.model'),
+                model: filled($agent?->model) ? $agent->model : config('reviews.model'),
                 timeout: (int) config('reviews.timeout'),
             );
 
@@ -41,11 +45,13 @@ class ReviewAnalyzer
             foreach ($response['findings'] ?? [] as $raw) {
                 $finding = $this->validate($context, is_array($raw) ? $raw : []);
 
-                if ($finding === null) {
+                if ($finding === null || ($agent !== null && ! $this->isWithinAgentScope($agent, $finding))) {
                     $discarded++;
 
                     continue;
                 }
+
+                $finding = $finding->fromAgent($agent?->id);
 
                 if ($graph !== null) {
                     $function = $graph->functionAt($finding->path, $finding->startLine);
@@ -57,6 +63,16 @@ class ReviewAnalyzer
         }
 
         return new ReviewAnalysis(array_values($findings), $summaries, min(100, $riskScore), $inputTokens, $outputTokens, $discarded);
+    }
+
+    /**
+     * Agents only report on their own files, categories and severities.
+     */
+    private function isWithinAgentScope(ReviewAgent $agent, ProposedFinding $finding): bool
+    {
+        return $agent->matchesPath($finding->path)
+            && in_array($finding->category, $agent->allowedCategories(), true)
+            && $agent->allowsSeverity($finding->severity);
     }
 
     /**

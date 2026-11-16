@@ -19,6 +19,9 @@ enum FindingStatus: string
     /** Dropped by the verifier pass as a likely false positive. */
     case Rejected = 'rejected';
 
+    /** Dismissed by a person on GitHub ("@bot ignore"); never raised again on the pull request. */
+    case Dismissed = 'dismissed';
+
     public function label(): string
     {
         return ucfirst($this->value);
@@ -29,7 +32,7 @@ enum FindingStatus: string
         return match ($this) {
             self::Published => 'default',
             self::Suppressed, self::Duplicate => 'secondary',
-            self::Outdated, self::Rejected => 'outline',
+            self::Outdated, self::Rejected, self::Dismissed => 'outline',
         };
     }
 }

@@ -34,14 +34,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ?int $graph_callers
  * @property ?FindingVerification $verification
  * @property ?string $verifier_note
+ * @property ?int $learning_id
  * @property FindingStatus $status
  * @property ?int $github_comment_id
  * @property ?string $dismissed_by
  * @property-read ReviewRun $reviewRun
  * @property-read PullRequest $pullRequest
  * @property-read ?ReviewAgent $agent
+ * @property-read ?Learning $learning
  */
-#[Fillable(['review_run_id', 'pull_request_id', 'review_agent_id', 'fingerprint', 'category', 'severity', 'confidence', 'risk_score', 'file_path', 'start_line', 'end_line', 'title', 'body', 'suggestion', 'code', 'graph_symbol', 'graph_callers', 'status', 'verification', 'verifier_note', 'github_comment_id', 'dismissed_by'])]
+#[Fillable(['review_run_id', 'pull_request_id', 'review_agent_id', 'fingerprint', 'category', 'severity', 'confidence', 'risk_score', 'file_path', 'start_line', 'end_line', 'title', 'body', 'suggestion', 'code', 'graph_symbol', 'graph_callers', 'status', 'verification', 'verifier_note', 'learning_id', 'github_comment_id', 'dismissed_by'])]
 class ReviewFinding extends Model
 {
     /** @use HasFactory<ReviewFindingFactory> */
@@ -85,6 +87,24 @@ class ReviewFinding extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(ReviewAgent::class, 'review_agent_id');
+    }
+
+    /**
+     * The team learning the verifier matched when it rejected this finding.
+     *
+     * @return BelongsTo<Learning, $this>
+     */
+    public function learning(): BelongsTo
+    {
+        return $this->belongsTo(Learning::class);
+    }
+
+    /**
+     * @return HasMany<FindingSignal, $this>
+     */
+    public function signals(): HasMany
+    {
+        return $this->hasMany(FindingSignal::class);
     }
 
     /**

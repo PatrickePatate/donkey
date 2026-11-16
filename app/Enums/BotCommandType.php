@@ -15,6 +15,7 @@ enum BotCommandType: string
     case Pause = 'pause';
     case Resume = 'resume';
     case Help = 'help';
+    case Remember = 'remember';
 
     /** Anything else: a question answered by the assistant. */
     case Ask = 'ask';
@@ -25,7 +26,7 @@ enum BotCommandType: string
     public function requiresWriteAccess(): bool
     {
         return match ($this) {
-            self::Review, self::FullReview, self::RunAgent, self::Ignore, self::Pause, self::Resume, self::Ask => true,
+            self::Review, self::FullReview, self::RunAgent, self::Ignore, self::Pause, self::Resume, self::Ask, self::Remember => true,
             self::ListAgents, self::Help => false,
         };
     }

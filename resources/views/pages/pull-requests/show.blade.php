@@ -153,7 +153,7 @@ new class extends Component
         }
 
         return $this->selectedRun->findings()
-            ->with('agent')
+            ->with('agent', 'learning', 'signals')
             ->when($this->findingStatus !== 'all', fn ($query) => $query->where('status', $this->findingStatus))
             ->orderByDesc('risk_score')
             ->get();
@@ -376,7 +376,20 @@ new class extends Component
                                     @if ($finding->status === FindingStatus::Dismissed && $finding->dismissed_by)
                                         <p class="text-xs text-muted-foreground">Dismissed on GitHub by {{ '@'.$finding->dismissed_by }}.</p>
                                     @endif
-                                    @if ($finding->status === FindingStatus::Rejected && $finding->verifier_note)
+                                    @if ($finding->learning !== null)
+                                        <x-ui.alert>
+                                            <x-slot:icon><x-ui.icon name="lightbulb" /></x-slot:icon>
+                                            <span><span class="font-medium text-foreground">Stopped by a team learning:</span> {{ $finding->learning->body }}</span>
+                                        </x-ui.alert>
+                                    @endif
+                                    @if ($finding->signals->isNotEmpty())
+                                        <p class="flex flex-wrap gap-1.5">
+                                            @foreach ($finding->signals as $signal)
+                                                <x-ui.badge :variant="$signal->type->isPositive() ? 'success' : 'outline'">{{ $signal->type->label() }}</x-ui.badge>
+                                            @endforeach
+                                        </p>
+                                    @endif
+                                    @if ($finding->status === FindingStatus::Rejected && $finding->verifier_note && $finding->learning === null)
                                         <x-ui.alert>
                                             <x-slot:icon><x-ui.icon name="shield" /></x-slot:icon>
                                             <span class="[&_code]:rounded [&_code]:bg-muted [&_code]:px-1"><span class="font-medium text-foreground">Verifier:</span> {!! Str::inlineMarkdown($finding->verifier_note, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</span>

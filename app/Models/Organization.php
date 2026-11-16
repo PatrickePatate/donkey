@@ -52,6 +52,14 @@ class Organization extends Model
     }
 
     /**
+     * @return HasMany<Learning, $this>
+     */
+    public function learnings(): HasMany
+    {
+        return $this->hasMany(Learning::class);
+    }
+
+    /**
      * @return HasMany<ReviewAgent, $this>
      */
     public function reviewAgents(): HasMany

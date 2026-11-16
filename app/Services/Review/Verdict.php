@@ -12,5 +12,6 @@ final class Verdict
         public readonly ?FindingSeverity $severity,
         public readonly ?int $confidence,
         public readonly string $reason,
+        public readonly ?int $learningId = null,
     ) {}
 }

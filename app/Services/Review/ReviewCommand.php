@@ -28,7 +28,8 @@ final class ReviewCommand
     ];
 
     /**
-     * @param  string  $arguments  The agent slug for "run", the question for "ask".
+     * @param  string  $arguments  The agent slug for "run", the question for "ask", the reason for "ignore",
+     *                             what to remember for "remember".
      */
     public function __construct(public readonly BotCommandType $type, public readonly string $arguments = '') {}
 
@@ -69,6 +70,14 @@ final class ReviewCommand
                 return new self(BotCommandType::Review, trim(substr($text, strlen('review'))));
             }
 
+            if (preg_match('/^(ignore|dismiss|false positive)[\s,:.\-—–]+\S/u', $phrase, $keyword) === 1) {
+                return new self(BotCommandType::Ignore, self::textAfter($body, $handle, $keyword[1]));
+            }
+
+            if (preg_match('/^remember[\s,:]+\S/', $phrase) === 1) {
+                return new self(BotCommandType::Remember, self::textAfter($body, $handle, 'remember'));
+            }
+
             if (preg_match('/^run\s+([a-z0-9][a-z0-9-]*)$/', $phrase, $agent) === 1) {
                 return new self(BotCommandType::RunAgent, $agent[1]);
             }
@@ -79,6 +88,16 @@ final class ReviewCommand
         }
 
         return null;
+    }
+
+    /**
+     * Everything written after "@handle keyword", including following lines.
+     */
+    private static function textAfter(string $body, string $handle, string $keyword): string
+    {
+        $pattern = '/^.*?@'.preg_quote($handle, '/').'\b[,:]?\s*'.preg_quote($keyword, '/').'[\s,:.\-—–]*/isu';
+
+        return trim((string) preg_replace($pattern, '', $body, 1));
     }
 
     public function isReview(): bool

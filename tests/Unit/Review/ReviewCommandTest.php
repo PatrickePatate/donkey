@@ -32,3 +32,19 @@ it('keeps the agent slug and the full question text', function () {
         ->type->toBe(BotCommandType::Ask)
         ->arguments->toBe("is this safe?\nThe input is validated upstream.");
 });
+
+it('keeps the reason given for a dismissal and what to remember', function () {
+    expect(ReviewCommand::parse('@donkey ignore: these queries only use constants.', 'donkey'))
+        ->type->toBe(BotCommandType::Ignore)
+        ->arguments->toBe('these queries only use constants.');
+
+    expect(ReviewCommand::parse("@donkey false positive — validated by the FormRequest\nsee StoreInvoiceRequest", 'donkey'))
+        ->type->toBe(BotCommandType::Ignore)
+        ->arguments->toBe("validated by the FormRequest\nsee StoreInvoiceRequest");
+
+    expect(ReviewCommand::parse('@donkey remember that money is always stored in cents', 'donkey'))
+        ->type->toBe(BotCommandType::Remember)
+        ->arguments->toBe('that money is always stored in cents');
+
+    expect(ReviewCommand::parse('@donkey remember', 'donkey')?->type)->toBe(BotCommandType::Ask);
+});

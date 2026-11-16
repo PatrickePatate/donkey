@@ -30,6 +30,10 @@ class FindingVerifier implements Agent, HasStructuredOutput
         - "rejected": the code shown contradicts the claim, the issue is speculative, already handled
           (e.g. validated earlier, guarded, typed), purely stylistic, or not caused by this change.
 
+        When a <team_learnings> section is present, it lists lessons this team approved from earlier reviews. Reject a
+        finding that one of its false-positive learnings describes, and set learning_id to that learning's id. Use
+        learning_id 0 otherwise.
+
         For confirmed findings, re-assess severity ({$severities}) and confidence (0-100); lower them when the
         reviewer overstated the impact. Give a one-sentence reason for every verdict.
 
@@ -47,6 +51,7 @@ class FindingVerifier implements Agent, HasStructuredOutput
                 'severity' => $schema->string()->enum(array_column(FindingSeverity::cases(), 'value'))->required(),
                 'confidence' => $schema->integer()->min(0)->max(100)->required(),
                 'reason' => $schema->string()->required(),
+                'learning_id' => $schema->integer()->min(0)->required(),
             ]))->required(),
         ];
     }

@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\LearningStatus;
 use App\Models\Organization;
 use App\Models\WebhookEvent;
+use App\Services\Knowledge\QualityMetrics;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -42,6 +44,23 @@ new #[Title('Dashboard')] class extends Component
             'installations' => $this->organization->githubInstallations()->count(),
             'members' => $this->organization->members()->count(),
         ];
+    }
+
+    /**
+     * Feedback on the last 30 days of posted findings.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function quality(): array
+    {
+        return app(QualityMetrics::class)->forOrganization($this->organization);
+    }
+
+    #[Computed]
+    public function pendingLearnings(): int
+    {
+        return $this->organization->learnings()->where('status', LearningStatus::Proposed)->count();
     }
 
     /**
@@ -93,6 +112,76 @@ new #[Title('Dashboard')] class extends Component
             </div>
         @endforeach
     </div>
+
+    @if ($this->pendingLearnings > 0)
+        <x-ui.alert :title="$this->pendingLearnings.' proposed '.str('learning')->plural($this->pendingLearnings).' to review'">
+            <x-slot:icon><x-ui.icon name="lightbulb" /></x-slot:icon>
+            <p>Donkey turned feedback on its findings into rules for future reviews. They only apply once an admin approves them.</p>
+            <div class="mt-2">
+                <x-ui.button size="sm" variant="outline" :href="route('knowledge.index')" wire:navigate>Open the inbox</x-ui.button>
+            </div>
+        </x-ui.alert>
+    @endif
+
+    @php($quality = $this->quality)
+    <x-ui.card title="Review quality" description="Feedback on findings posted in the last 30 days: suggestions applied, code fixed, 👍 and resolved threads count as accepted; dismissals and 👎 as rejected.">
+        @if ($quality['posted'] === 0)
+            <p class="py-6 text-center text-sm text-muted-foreground">No findings posted in the last 30 days.</p>
+        @else
+            <div class="grid gap-6">
+                <dl class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                    @foreach ([
+                        ['Posted', $quality['posted']],
+                        ['Acceptance', $quality['acceptance_rate'] !== null ? $quality['acceptance_rate'].'%' : '—'],
+                        ['Accepted', $quality['accepted']],
+                        ['Rejected', $quality['rejected']],
+                        ['Merged untouched', $quality['ignored']],
+                        ['Stopped by learnings', $quality['filtered_by_learnings']],
+                    ] as [$label, $value])
+                        <div class="grid gap-1">
+                            <dt class="text-xs text-muted-foreground">{{ $label }}</dt>
+                            <dd class="text-2xl font-semibold tabular-nums">{{ $value }}</dd>
+                        </div>
+                    @endforeach
+                </dl>
+
+                <div class="grid gap-6 lg:grid-cols-2">
+                    @foreach (['By category' => $quality['by_category'], 'By reviewer' => $quality['by_reviewer']] as $title => $rows)
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-b text-left text-muted-foreground">
+                                        <th class="h-9 px-2 font-medium">{{ $title }}</th>
+                                        <th class="h-9 px-2 text-right font-medium">Posted</th>
+                                        <th class="h-9 px-2 text-right font-medium">Accepted</th>
+                                        <th class="h-9 px-2 text-right font-medium">Rejected</th>
+                                        <th class="h-9 w-32 px-2 font-medium"><span class="sr-only">Share</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($rows as $row)
+                                        <tr class="border-b last:border-0">
+                                            <td class="p-2">{{ $row['label'] }}</td>
+                                            <td class="p-2 text-right tabular-nums">{{ $row['posted'] }}</td>
+                                            <td class="p-2 text-right tabular-nums">{{ $row['accepted'] }}</td>
+                                            <td class="p-2 text-right tabular-nums">{{ $row['rejected'] }}</td>
+                                            <td class="p-2">
+                                                <div class="flex h-1.5 overflow-hidden rounded-full bg-muted" title="{{ $row['accepted'] }} accepted, {{ $row['rejected'] }} rejected, {{ $row['ignored'] }} merged untouched">
+                                                    <span class="bg-success" style="width: {{ 100 * $row['accepted'] / max(1, $row['posted']) }}%"></span>
+                                                    <span class="bg-destructive" style="width: {{ 100 * $row['rejected'] / max(1, $row['posted']) }}%"></span>
+                                                    <span class="bg-muted-foreground/40" style="width: {{ 100 * $row['ignored'] / max(1, $row['posted']) }}%"></span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+    </x-ui.card>
 
     <x-ui.card title="Live activity" description="GitHub events for this organization, updated in real time.">
         @if ($this->recentEvents->isEmpty())

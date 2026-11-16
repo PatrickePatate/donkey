@@ -10,6 +10,7 @@ use App\Models\WebhookEvent;
 use App\Services\GitHub\Webhooks\HandleIssueCommentEvent;
 use App\Services\GitHub\Webhooks\HandlePullRequestEvent;
 use App\Services\GitHub\Webhooks\HandleReviewCommentEvent;
+use App\Services\GitHub\Webhooks\HandleReviewThreadEvent;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -46,6 +47,7 @@ class ProcessGitHubWebhook implements ShouldQueue
             'pull_request' => app(HandlePullRequestEvent::class)->handle($installation, $this->webhookEvent),
             'issue_comment' => app(HandleIssueCommentEvent::class)->handle($installation, $this->webhookEvent),
             'pull_request_review_comment' => app(HandleReviewCommentEvent::class)->handle($installation, $this->webhookEvent),
+            'pull_request_review_thread' => app(HandleReviewThreadEvent::class)->handle($installation, $this->webhookEvent),
             default => WebhookEventStatus::Ignored,
         };
 

@@ -174,6 +174,22 @@ class PullRequestClient
     }
 
     /**
+     * One inline review comment, with its reaction counts, or null when it was deleted.
+     *
+     * @return ?array<string, mixed>
+     */
+    public function reviewComment(PullRequest $pullRequest, int $commentId): ?array
+    {
+        $response = $this->request($pullRequest)->get($this->repoPath($pullRequest)."/pulls/comments/{$commentId}");
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        return $response->throw()->json();
+    }
+
+    /**
      * Every comment of an inline review thread, oldest first, starting with the top-level comment.
      *
      * @return list<array<string, mixed>>

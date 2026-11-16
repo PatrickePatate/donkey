@@ -51,6 +51,14 @@ class Repository extends Model
     }
 
     /**
+     * @return HasMany<RepositoryMemory, $this>
+     */
+    public function memories(): HasMany
+    {
+        return $this->hasMany(RepositoryMemory::class);
+    }
+
+    /**
      * @return HasMany<ReviewAgent, $this>
      */
     public function reviewAgents(): HasMany

@@ -6,6 +6,7 @@
         ['label' => 'Pull requests', 'route' => 'pull-requests.*', 'href' => 'pull-requests.index', 'icon' => 'git-pull-request'],
         ['label' => 'Repositories', 'route' => 'repositories.index', 'icon' => 'git-branch'],
         ['label' => 'Agents', 'route' => 'agents.*', 'href' => 'agents.index', 'icon' => 'bot'],
+        ['label' => 'Knowledge', 'route' => 'knowledge.*', 'href' => 'knowledge.index', 'icon' => 'lightbulb'],
     ];
     $settings = [
         ['label' => 'Organization', 'route' => 'settings.organization', 'icon' => 'settings'],

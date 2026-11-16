@@ -8,10 +8,14 @@ use App\Enums\ConversationRole;
 use App\Enums\ConversationStatus;
 use App\Enums\FindingStatus;
 use App\Enums\ReviewTrigger;
+use App\Enums\SignalType;
 use App\Events\ConversationUpdated;
 use App\Jobs\AnswerPullRequestComment;
+use App\Models\RepositoryMemory;
 use App\Models\ReviewAgent;
+use App\Services\Knowledge\SignalRecorder;
 use App\Services\Review\ReviewCommand;
+use Illuminate\Support\Str;
 
 /**
  * Carries out a command written to the bot in a pull request comment.
@@ -25,7 +29,11 @@ class BotCommandHandler
 
     private const READ_ASSOCIATIONS = [...self::WRITE_ASSOCIATIONS, 'CONTRIBUTOR'];
 
-    public function __construct(private StartReview $startReview, private CommentResponder $responder) {}
+    public function __construct(
+        private StartReview $startReview,
+        private CommentResponder $responder,
+        private SignalRecorder $signals,
+    ) {}
 
     /**
      * Whether the comment's author may run this command at all; unauthorized comments are silently ignored.
@@ -43,7 +51,8 @@ class BotCommandHandler
             BotCommandType::Review, BotCommandType::FullReview => $this->review($command, $comment),
             BotCommandType::RunAgent => $this->runAgent($command->arguments, $comment),
             BotCommandType::ListAgents => $this->responder->replyTo($comment, $this->agentList($comment)),
-            BotCommandType::Ignore => $this->ignore($comment),
+            BotCommandType::Ignore => $this->ignore($comment, $command->arguments),
+            BotCommandType::Remember => $this->remember($comment, $command->arguments),
             BotCommandType::Pause => $this->setPaused($comment, true),
             BotCommandType::Resume => $this->setPaused($comment, false),
             BotCommandType::Help => $this->responder->replyTo($comment, $this->help($comment)),
@@ -97,7 +106,10 @@ class BotCommandHandler
         );
     }
 
-    private function ignore(IncomingComment $comment): void
+    /**
+     * @param  string  $reason  Why the finding is wrong, if the author said; it helps propose a learning.
+     */
+    private function ignore(IncomingComment $comment, string $reason): void
     {
         $finding = $comment->finding;
         $handle = $this->botHandle($comment);
@@ -112,9 +124,50 @@ class BotCommandHandler
             $finding->update(['status' => FindingStatus::Dismissed, 'dismissed_by' => $comment->authorLogin]);
         }
 
+        if ($reason !== '') {
+            $comment->pullRequest->conversationMessages()->createOrFirst(
+                ['github_comment_id' => $comment->commentId],
+                [
+                    'review_finding_id' => $finding->id,
+                    'thread_comment_id' => $comment->threadCommentId,
+                    'role' => ConversationRole::User,
+                    'author_login' => $comment->authorLogin,
+                    'body' => "Dismissed: {$reason}",
+                    'status' => ConversationStatus::Answered,
+                ],
+            );
+        }
+
+        $this->signals->record($finding, SignalType::Dismissed, $comment->authorLogin);
+
         $this->responder->react($comment, '+1');
-        $this->responder->replyTo($comment, "Dismissed. I won't raise this again on this pull request.");
+        $this->responder->replyTo($comment, "Dismissed. I won't raise this again on this pull request, and I'll use your feedback to suggest a learning for future reviews.");
         ConversationUpdated::dispatch($comment->pullRequest);
+    }
+
+    /**
+     * Save a repository memory. In a finding's thread, it is tied to that finding's file.
+     */
+    private function remember(IncomingComment $comment, string $text): void
+    {
+        $memory = $comment->pullRequest->repository->memories()->createOrFirst(
+            ['github_comment_id' => $comment->commentId],
+            [
+                'author_login' => $comment->authorLogin,
+                'body' => Str::limit($text, 2000),
+                'path_glob' => $comment->finding?->file_path,
+                'source' => RepositoryMemory::SOURCE_GITHUB,
+            ],
+        );
+
+        if (! $memory->wasRecentlyCreated) {
+            return;
+        }
+
+        $this->responder->react($comment, '+1');
+        $this->responder->replyTo($comment, 'Noted. I will keep this in mind when reviewing '
+            .($memory->path_glob !== null ? "`{$memory->path_glob}`" : $comment->pullRequest->repository->full_name)
+            .'. Admins can edit or remove it from the Knowledge page in Donkey.');
     }
 
     private function setPaused(IncomingComment $comment, bool $paused): void
@@ -191,7 +244,8 @@ class BotCommandHandler
             "- `@{$handle} review` — review the changes since my last review",
             "- `@{$handle} full review` — review the whole pull request again",
             "- `@{$handle} run <agent>` — run one specialist agent; `@{$handle} agents` lists them",
-            "- `@{$handle} ignore` — in the thread of one of my comments, dismiss that finding",
+            "- `@{$handle} ignore: <why>` — in the thread of one of my comments, dismiss that finding",
+            "- `@{$handle} remember <fact>` — teach me something about this repository for future reviews",
             "- `@{$handle} pause` / `@{$handle} resume` — stop or restart automatic reviews on this pull request",
             "- `@{$handle} <question>` — ask me anything about this pull request or, in a thread, about that finding",
         ]);

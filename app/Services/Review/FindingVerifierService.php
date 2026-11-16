@@ -7,6 +7,7 @@ use App\Enums\FindingSeverity;
 use App\Enums\FindingVerification;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
+use App\Services\Knowledge\ReviewKnowledge;
 use Throwable;
 
 /**
@@ -24,7 +25,7 @@ class FindingVerifierService
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
      * @return array<int, Verdict> Missing ids were not verified.
      */
-    public function verify(ReviewRun $run, array $findings): array
+    public function verify(ReviewRun $run, array $findings, ?ReviewKnowledge $knowledge = null): array
     {
         if ($findings === [] || ! config('reviews.verifier.enabled')) {
             return [];
@@ -32,7 +33,7 @@ class FindingVerifierService
 
         try {
             $response = FindingVerifier::make()->prompt(
-                $this->prompt($run, $findings),
+                $this->prompt($run, $findings, $knowledge),
                 provider: config('reviews.provider'),
                 model: config('reviews.verifier.model'),
                 timeout: (int) config('reviews.timeout'),
@@ -60,6 +61,7 @@ class FindingVerifierService
                 severity: FindingSeverity::tryFrom((string) ($raw['severity'] ?? '')),
                 confidence: isset($raw['confidence']) ? (int) $raw['confidence'] : null,
                 reason: trim((string) ($raw['reason'] ?? '')),
+                learningId: $this->citedLearning($raw, $knowledge),
             );
         }
 
@@ -69,7 +71,19 @@ class FindingVerifierService
     /**
      * @param  array<int, ProposedFinding>  $findings
      */
-    private function prompt(ReviewRun $run, array $findings): string
+    /**
+     * The learning the verifier says a finding matches, if it is one of those it was shown.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function citedLearning(array $raw, ?ReviewKnowledge $knowledge): ?int
+    {
+        $id = (int) ($raw['learning_id'] ?? 0);
+
+        return $id > 0 && $knowledge?->learnings->contains('id', $id) ? $id : null;
+    }
+
+    private function prompt(ReviewRun $run, array $findings, ?ReviewKnowledge $knowledge = null): string
     {
         $contents = [];
         $sections = [];
@@ -102,7 +116,12 @@ class FindingVerifierService
             ]);
         }
 
-        return "Verify these findings. Lines marked \">\" are the ones the finding points at.\n\n".implode("\n\n", $sections);
+        $learnings = $knowledge->learnings ?? collect();
+        $preamble = $learnings->isEmpty() ? '' : "<team_learnings>\n".$learnings
+            ->map(fn ($learning): string => "- id {$learning->id} ({$learning->kind->value}".($learning->path_glob !== null ? ", {$learning->path_glob}" : '')."): {$learning->body}")
+            ->implode("\n")."\n</team_learnings>\n\n";
+
+        return $preamble."Verify these findings. Lines marked \">\" are the ones the finding points at.\n\n".implode("\n\n", $sections);
     }
 
     /**

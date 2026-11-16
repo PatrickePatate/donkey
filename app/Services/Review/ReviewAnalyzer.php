@@ -8,6 +8,7 @@ use App\Enums\FindingSeverity;
 use App\Models\PullRequest;
 use App\Models\ReviewAgent;
 use App\Services\Graph\GraphContext;
+use App\Services\Knowledge\ReviewKnowledge;
 
 /**
  * Runs the reviewer over each chunk of the diff and keeps only findings that point at real diff lines.
@@ -17,7 +18,7 @@ class ReviewAnalyzer
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
      */
-    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null): ReviewAnalysis
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -28,7 +29,7 @@ class ReviewAnalyzer
 
         foreach ($context->chunks((int) config('reviews.chunk_characters')) as $chunk) {
             $response = CodeReviewer::make(agent: $agent)->prompt(
-                $this->prompt($pullRequest, $context, $chunk, $graph),
+                $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: config('reviews.provider'),
                 model: filled($agent?->model) ? $agent->model : config('reviews.model'),
                 timeout: (int) config('reviews.timeout'),
@@ -121,7 +122,7 @@ class ReviewAnalyzer
     /**
      * @param  list<FilePatch>  $chunk
      */
-    private function prompt(PullRequest $pullRequest, ReviewContext $context, array $chunk, ?GraphContext $graph): string
+    private function prompt(PullRequest $pullRequest, ReviewContext $context, array $chunk, ?GraphContext $graph, ?ReviewKnowledge $knowledge): string
     {
         $sections = [];
 
@@ -142,6 +143,10 @@ class ReviewAnalyzer
             }
 
             $sections[] = '</repository_instructions>';
+        }
+
+        if ($knowledge !== null && ! $knowledge->isEmpty()) {
+            $sections[] = $knowledge->promptSection();
         }
 
         if ($graph !== null && $graph->prompt !== '') {

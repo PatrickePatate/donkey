@@ -5,6 +5,7 @@ use App\Enums\ConversationStatus;
 use App\Enums\FindingStatus;
 use App\Enums\ReviewTrigger;
 use App\Jobs\AnswerPullRequestComment;
+use App\Jobs\ProposeLearnings;
 use App\Jobs\ReviewPullRequest;
 use App\Models\ConversationMessage;
 use App\Models\GithubInstallation;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Queue;
 require_once __DIR__.'/ConversationTestHelpers.php';
 
 beforeEach(function () {
-    Queue::fake([ReviewPullRequest::class, AnswerPullRequestComment::class]);
+    Queue::fake([ReviewPullRequest::class, AnswerPullRequestComment::class, ProposeLearnings::class]);
     configureGitHubApp();
 
     $this->installation = GithubInstallation::factory()->create();

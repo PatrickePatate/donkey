@@ -6,13 +6,18 @@ use App\Enums\FindingStatus;
 use App\Enums\FindingVerification;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
+use App\Enums\SignalType;
 use App\Events\ReviewRunUpdated;
+use App\Models\Learning;
 use App\Models\ReviewAgent;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Graph\GraphContext;
 use App\Services\Graph\GraphContextProvider;
+use App\Services\Knowledge\KnowledgeRetriever;
+use App\Services\Knowledge\ReviewKnowledge;
+use App\Services\Knowledge\SignalRecorder;
 use App\Services\Review\FilePatch;
 use App\Services\Review\FindingVerifierService;
 use App\Services\Review\ProposedFinding;
@@ -65,6 +70,8 @@ class ReviewPullRequest implements ShouldQueue
         FindingVerifierService $verifier,
         ReviewPublisher $publisher,
         PullRequestClient $client,
+        KnowledgeRetriever $knowledgeRetriever,
+        SignalRecorder $signals,
     ): void {
         $run = $this->run->fresh(['agent', 'pullRequest.repository.organization', 'pullRequest.repository.installation']);
 
@@ -123,6 +130,8 @@ class ReviewPullRequest implements ShouldQueue
                 return;
             }
 
+            $knowledge = $knowledgeRetriever->forPullRequest($pullRequest, array_keys($context->files));
+
             $this->stage($run, ReviewStage::Mapping);
             $graph = $graphProvider->forReview($run, $context);
             $run->update([
@@ -133,7 +142,7 @@ class ReviewPullRequest implements ShouldQueue
             ]);
 
             $this->stage($run, ReviewStage::Analyzing);
-            $analysis = $this->analyze($run, $analyzer, $context, $graph->context);
+            $analysis = $this->analyze($run, $analyzer, $context, $graph->context, $knowledge);
             $run->update([
                 'tokens_input' => $analysis->inputTokens,
                 'tokens_output' => $analysis->outputTokens,
@@ -149,7 +158,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             $this->stage($run, ReviewStage::Validating);
-            $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier));
+            $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier, $knowledge));
             $run->update([
                 'tokens_input' => $run->tokens_input + $verifier->inputTokens,
                 'tokens_output' => $run->tokens_output + $verifier->outputTokens,
@@ -162,8 +171,10 @@ class ReviewPullRequest implements ShouldQueue
                 return;
             }
 
+            $this->reinforceMatchedLearnings($findings);
+
             if ($run->agent === null) {
-                $this->markOutdatedFindings($run, $context, $findings);
+                $this->markOutdatedFindings($run, $context, $findings, $signals);
             }
 
             $this->stage($run, ReviewStage::Publishing);
@@ -195,15 +206,15 @@ class ReviewPullRequest implements ShouldQueue
      * The general review plus every agent set to join automatic reviews whose files changed,
      * or only the requested agent for an agent run.
      */
-    private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph): ReviewAnalysis
+    private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph, ReviewKnowledge $knowledge): ReviewAnalysis
     {
         $pullRequest = $run->pullRequest;
 
         if ($run->agent !== null) {
-            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent);
+            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge);
         }
 
-        $analysis = $analyzer->analyze($pullRequest, $context, $graph);
+        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge);
 
         $agents = ReviewAgent::availableFor($pullRequest->repository)->where('run_on_auto_review', true);
 
@@ -215,7 +226,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             try {
-                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent));
+                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge));
             } catch (Throwable $exception) {
                 // One failing agent must not sink the whole review.
                 report($exception);
@@ -237,9 +248,9 @@ class ReviewPullRequest implements ShouldQueue
      * Decide each finding's fate: duplicate of an earlier comment, below the risk gate,
      * rejected by the verifier, or published (with the verifier's adjusted assessment).
      *
-     * @return list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string}>
+     * @return list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string, learning_id: ?int}>
      */
-    private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier): array
+    private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier, ReviewKnowledge $knowledge): array
     {
         $previous = ReviewFinding::query()
             ->where('pull_request_id', $run->pull_request_id)
@@ -262,7 +273,7 @@ class ReviewPullRequest implements ShouldQueue
                 default => FindingStatus::Suppressed,
             };
 
-            $decisions[$index] = ['finding' => $finding, 'status' => $status, 'verification' => null, 'note' => null];
+            $decisions[$index] = ['finding' => $finding, 'status' => $status, 'verification' => null, 'note' => null, 'learning_id' => null];
 
             if ($status === FindingStatus::Published) {
                 $candidates[$index] = $finding;
@@ -273,7 +284,7 @@ class ReviewPullRequest implements ShouldQueue
             return array_values($decisions);
         }
 
-        $verdicts = $verifier->verify($run, $candidates);
+        $verdicts = $verifier->verify($run, $candidates, $knowledge);
 
         foreach ($candidates as $index => $finding) {
             $verdict = $verdicts[$index] ?? null;
@@ -289,6 +300,7 @@ class ReviewPullRequest implements ShouldQueue
 
             if ($verdict->verification === FindingVerification::Rejected) {
                 $decisions[$index]['status'] = FindingStatus::Rejected;
+                $decisions[$index]['learning_id'] = $verdict->learningId;
 
                 continue;
             }
@@ -302,7 +314,7 @@ class ReviewPullRequest implements ShouldQueue
     }
 
     /**
-     * @param  list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string}>  $decisions
+     * @param  list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string, learning_id: ?int}>  $decisions
      * @return Collection<int, ReviewFinding>
      */
     private function storeFindings(ReviewRun $run, array $decisions): Collection
@@ -330,16 +342,32 @@ class ReviewPullRequest implements ShouldQueue
                 'status' => $decision['status'],
                 'verification' => $decision['verification'],
                 'verifier_note' => $decision['note'],
+                'learning_id' => $decision['learning_id'],
             ]);
         });
     }
 
     /**
-     * Earlier published findings in re-reviewed files whose code is gone from the diff are outdated.
+     * Learnings that just filtered out a finding are worth keeping around.
      *
      * @param  Collection<int, ReviewFinding>  $findings
      */
-    private function markOutdatedFindings(ReviewRun $run, ReviewContext $context, Collection $findings): void
+    private function reinforceMatchedLearnings(Collection $findings): void
+    {
+        $ids = $findings->pluck('learning_id')->filter()->unique()->values()->all();
+
+        if ($ids !== []) {
+            Learning::query()->whereKey($ids)->get()->each->reinforce();
+        }
+    }
+
+    /**
+     * Earlier published findings in re-reviewed files whose code is gone from the diff are outdated:
+     * the author fixed them, by committing the suggestion or otherwise.
+     *
+     * @param  Collection<int, ReviewFinding>  $findings
+     */
+    private function markOutdatedFindings(ReviewRun $run, ReviewContext $context, Collection $findings, SignalRecorder $signals): void
     {
         $current = $findings->pluck('fingerprint')->all();
 
@@ -351,7 +379,7 @@ class ReviewPullRequest implements ShouldQueue
             ->whereIn('file_path', array_keys($context->files))
             ->whereNotIn('fingerprint', $current)
             ->get()
-            ->each(function (ReviewFinding $previous) use ($context): void {
+            ->each(function (ReviewFinding $previous) use ($context, $signals): void {
                 $file = $context->file($previous->file_path);
                 $stillThere = $file !== null
                     && $previous->code !== null
@@ -360,8 +388,23 @@ class ReviewPullRequest implements ShouldQueue
 
                 if (! $stillThere) {
                     $previous->update(['status' => FindingStatus::Outdated]);
+                    $signals->record($previous, $this->suggestionWasApplied($previous, $file) ? SignalType::Applied : SignalType::Fixed);
                 }
             });
+    }
+
+    /**
+     * Whether the finding's suggested code now appears among the file's new lines.
+     */
+    private function suggestionWasApplied(ReviewFinding $finding, ?FilePatch $file): bool
+    {
+        if ($finding->suggestion === null || $file === null) {
+            return false;
+        }
+
+        $normalize = fn (string $code): string => (string) preg_replace('/\s+/', '', $code);
+
+        return str_contains($normalize(implode("\n", $file->commentableLines)), $normalize($finding->suggestion));
     }
 
     private function isSuperseded(ReviewRun $run): bool

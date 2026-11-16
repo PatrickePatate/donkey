@@ -7,6 +7,7 @@ use App\Actions\SyncPullRequest;
 use App\Enums\ReviewTrigger;
 use App\Enums\WebhookEventStatus;
 use App\Jobs\BuildRepositoryGraph;
+use App\Jobs\CollectFindingFeedback;
 use App\Models\GithubInstallation;
 use App\Models\WebhookEvent;
 
@@ -41,6 +42,10 @@ class HandlePullRequestEvent
             && $repository->autoReviewEnabled()
         ) {
             $this->startReview->handle($pullRequest, ReviewTrigger::Auto, $payload['sender']['login'] ?? null);
+        }
+
+        if ($event->action === 'closed') {
+            CollectFindingFeedback::dispatch($pullRequest)->delay(now()->addMinute());
         }
 
         $mergeCommit = $payload['pull_request']['merge_commit_sha'] ?? null;

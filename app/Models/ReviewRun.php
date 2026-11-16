@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
+use App\Enums\RunGraphStatus;
 use Database\Factories\ReviewRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,6 +27,11 @@ use Illuminate\Support\Carbon;
  * @property ?ReviewStage $stage
  * @property ?int $risk_score
  * @property ?int $risk_threshold
+ * @property ?RunGraphStatus $graph_status
+ * @property ?string $graph_risk_level
+ * @property ?int $graph_risk_score
+ * @property ?array{changed_functions?: list<array<string, mixed>>, test_gaps?: int, impacted_functions?: int, impacted_files?: int, affected_flows?: int, error?: string} $graph_summary
+ * @property int $findings_rejected
  * @property ?string $summary
  * @property int $files_reviewed
  * @property ?string $provider
@@ -40,7 +46,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $created_at
  * @property-read PullRequest $pullRequest
  */
-#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'triggered_by', 'is_full', 'status', 'stage', 'risk_score', 'risk_threshold', 'summary', 'files_reviewed', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'error', 'started_at', 'completed_at'])]
+#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'triggered_by', 'is_full', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'error', 'started_at', 'completed_at'])]
 class ReviewRun extends Model
 {
     /** @use HasFactory<ReviewRunFactory> */
@@ -55,6 +61,10 @@ class ReviewRun extends Model
             'is_full' => 'boolean',
             'risk_score' => 'integer',
             'risk_threshold' => 'integer',
+            'graph_status' => RunGraphStatus::class,
+            'graph_risk_score' => 'integer',
+            'graph_summary' => 'array',
+            'findings_rejected' => 'integer',
             'files_reviewed' => 'integer',
             'tokens_input' => 'integer',
             'tokens_output' => 'integer',

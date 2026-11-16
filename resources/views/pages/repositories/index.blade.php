@@ -1,6 +1,9 @@
 <?php
 
+use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\SyncInstallationRepositories;
+use App\Services\GitHub\PullRequestClient;
+use App\Services\Graph\KodusGraph;
 use App\Models\GithubInstallation;
 use App\Models\Organization;
 use App\Models\Repository;
@@ -39,7 +42,7 @@ new #[Title('Repositories')] class extends Component
     public function repositories(): Collection
     {
         return $this->organization->repositories()
-            ->with(['installation', 'organization'])
+            ->with(['installation', 'organization', 'latestGraph'])
             ->when($this->search !== '', fn ($query) => $query->whereLike('full_name', "%{$this->search}%"))
             ->orderBy('full_name')
             ->get();
@@ -92,6 +95,31 @@ new #[Title('Repositories')] class extends Component
         $this->dispatch('toast', message: "Syncing repositories for {$installation->account_login}…");
     }
 
+    #[Computed]
+    public function graphAvailable(): bool
+    {
+        return app(KodusGraph::class)->isAvailable();
+    }
+
+    public function rebuildGraph(int $repositoryId, PullRequestClient $client): void
+    {
+        $repository = $this->findRepository($repositoryId);
+        Gate::authorize('update', $repository);
+
+        try {
+            $sha = $client->branchHead($repository, $repository->default_branch);
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->dispatch('toast', message: "Couldn't reach GitHub to find the latest commit of {$repository->default_branch}.", variant: 'destructive');
+
+            return;
+        }
+
+        BuildRepositoryGraph::dispatch($repository, $sha);
+
+        $this->dispatch('toast', message: "Building the code graph of {$repository->full_name}…");
+    }
+
     private function findRepository(int $repositoryId): Repository
     {
         return $this->organization->repositories()->with('organization')->findOrFail($repositoryId);
@@ -112,6 +140,13 @@ new #[Title('Repositories')] class extends Component
             </x-ui.button>
         @endcan
     </div>
+
+    @if (config('graph.enabled') && ! $this->graphAvailable && $this->repositories->isNotEmpty())
+        <x-ui.alert title="Code graph unavailable">
+            <x-slot:icon><x-ui.icon name="activity" /></x-slot:icon>
+            <p><code>kodus-graph</code> isn't installed on this server, so reviews run on the diff alone, without callers, contract changes and test coverage. Install it with <code>bun install -g @kodus/kodus-graph</code>.</p>
+        </x-ui.alert>
+    @endif
 
     @if ($this->installations->isNotEmpty())
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -165,6 +200,7 @@ new #[Title('Repositories')] class extends Component
                                 <th class="h-10 px-2 font-medium">Repository</th>
                                 <th class="h-10 px-2 font-medium">Auto-review</th>
                                 <th class="h-10 px-2 font-medium">Risk threshold</th>
+                                <th class="h-10 px-2 font-medium">Code graph</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -210,6 +246,26 @@ new #[Title('Repositories')] class extends Component
                                             @unless ($repository->overridesRiskThreshold())
                                                 <x-ui.badge variant="secondary">Org default</x-ui.badge>
                                             @endunless
+                                        </div>
+                                    </td>
+                                    <td class="p-2">
+                                        <div class="flex items-center gap-2">
+                                            @php($graph = $repository->latestGraph)
+                                            @if ($graph)
+                                                <x-ui.badge :variant="$graph->status->badgeVariant()" :title="$graph->error">{{ $graph->status->label() }}</x-ui.badge>
+                                                @if ($graph->built_at)
+                                                    <span class="text-xs text-muted-foreground" title="{{ number_format($graph->nodes_count) }} nodes · {{ number_format($graph->edges_count) }} edges">
+                                                        <code>{{ \Illuminate\Support\Str::substr($graph->commit_sha, 0, 7) }}</code> · {{ $graph->built_at->diffForHumans(short: true) }}
+                                                    </span>
+                                                @endif
+                                            @else
+                                                <span class="text-xs text-muted-foreground">Not built</span>
+                                            @endif
+                                            @if ($canUpdate && $this->graphAvailable)
+                                                <x-ui.button variant="ghost" size="icon" class="size-7" wire:click="rebuildGraph({{ $repository->id }})" title="Rebuild graph">
+                                                    <x-ui.icon name="refresh" />
+                                                </x-ui.button>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>

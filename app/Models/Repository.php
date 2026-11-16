@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['organization_id', 'github_installation_id', 'github_id', 'full_name', 'default_branch', 'is_private', 'auto_review_enabled', 'risk_threshold'])]
 class Repository extends Model
@@ -47,6 +48,22 @@ class Repository extends Model
     public function pullRequests(): HasMany
     {
         return $this->hasMany(PullRequest::class);
+    }
+
+    /**
+     * @return HasMany<RepositoryGraph, $this>
+     */
+    public function graphs(): HasMany
+    {
+        return $this->hasMany(RepositoryGraph::class);
+    }
+
+    /**
+     * @return HasOne<RepositoryGraph, $this>
+     */
+    public function latestGraph(): HasOne
+    {
+        return $this->hasOne(RepositoryGraph::class)->latestOfMany();
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Enums;
 enum ReviewStage: string
 {
     case Collecting = 'collecting';
+    case Mapping = 'mapping';
     case Analyzing = 'analyzing';
     case Validating = 'validating';
     case Publishing = 'publishing';
@@ -13,6 +14,7 @@ enum ReviewStage: string
     {
         return match ($this) {
             self::Collecting => 'Collect',
+            self::Mapping => 'Map impact',
             self::Analyzing => 'Analyze',
             self::Validating => 'Validate',
             self::Publishing => 'Publish',
@@ -23,8 +25,9 @@ enum ReviewStage: string
     {
         return match ($this) {
             self::Collecting => 'Diff and repository instructions',
+            self::Mapping => 'Callers, contracts and tests',
             self::Analyzing => 'Model reviews the changes',
-            self::Validating => 'Line checks, dedupe, risk gate',
+            self::Validating => 'Verifier, dedupe, risk gate',
             self::Publishing => 'Inline comments on GitHub',
         };
     }

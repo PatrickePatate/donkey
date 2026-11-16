@@ -5,9 +5,12 @@ namespace Database\Seeders;
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
 use App\Enums\FindingStatus;
+use App\Enums\FindingVerification;
+use App\Enums\GraphStatus;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
+use App\Enums\RunGraphStatus;
 use App\Models\GithubInstallation;
 use App\Models\Organization;
 use App\Models\PullRequest;
@@ -56,11 +59,21 @@ class DemoReviewSeeder extends Seeder
             'is_private' => true,
         ]);
 
+        $repository->graphs()->create([
+            'commit_sha' => sha1('base-12'),
+            'status' => GraphStatus::Ready,
+            'nodes_count' => 4_812,
+            'edges_count' => 15_377,
+            'files_count' => 386,
+            'duration_ms' => 41_200,
+            'built_at' => now()->subMinutes(12),
+        ]);
+
         $completed = $this->pullRequest($repository->id, 12, 'Charge customers for metered usage', 'ada', 'feature/metered-billing');
         $this->completedRun($completed);
 
         $running = $this->pullRequest($repository->id, 13, 'Cache invoice totals per account', 'grace', 'feature/invoice-cache');
-        $this->reviewRun($running, ReviewRunStatus::Running, ReviewStage::Analyzing, startedAgo: 20);
+        $this->reviewRun($running, ReviewRunStatus::Running, ReviewStage::Mapping, startedAgo: 20);
 
         $failed = $this->pullRequest($repository->id, 14, 'Migrate webhooks to the new queue', 'linus', 'chore/webhook-queue');
         $this->reviewRun($failed, ReviewRunStatus::Failed, ReviewStage::Validating, startedAgo: 600, error: 'Provider timed out after 180 seconds while analyzing chunk 2 of 3.');
@@ -135,13 +148,34 @@ class DemoReviewSeeder extends Seeder
             'Adds **metered usage billing**: usage records are aggregated per billing period and charged through `ChargeService`.',
             'The main risk is in how usage totals are queried: one raw SQL query interpolates the account id, and the aggregation runs one query per subscription.',
         ]));
-        $run->update(['risk_score' => 72, 'files_reviewed' => 6, 'tokens_input' => 18_250, 'tokens_output' => 2_310]);
+        $run->update([
+            'risk_score' => 72,
+            'files_reviewed' => 6,
+            'tokens_input' => 21_480,
+            'tokens_output' => 2_910,
+            'findings_rejected' => 1,
+            'graph_status' => RunGraphStatus::Ready,
+            'graph_risk_level' => 'HIGH',
+            'graph_risk_score' => 74,
+            'graph_summary' => [
+                'changed_functions' => [
+                    ['name' => 'ChargeService.chargeUsage', 'symbol' => 'app/Billing/ChargeService.php::ChargeService.chargeUsage', 'file' => 'app/Billing/ChargeService.php', 'start' => 52, 'end' => 80, 'callers' => 7, 'tested' => false, 'contract' => [['field' => 'params', 'old' => '(Subscription $subscription)', 'new' => '(Subscription $subscription, Period $period)']], 'impact' => '7 callers may need param update'],
+                    ['name' => 'UsageRepository.totalFor', 'symbol' => 'app/Billing/UsageRepository.php::UsageRepository.totalFor', 'file' => 'app/Billing/UsageRepository.php', 'start' => 38, 'end' => 44, 'callers' => 3, 'tested' => true, 'contract' => [], 'impact' => null],
+                    ['name' => 'Money.fromCents', 'symbol' => 'app/Billing/Money.php::Money.fromCents', 'file' => 'app/Billing/Money.php', 'start' => 10, 'end' => 14, 'callers' => 0, 'tested' => true, 'contract' => [], 'impact' => null],
+                ],
+                'test_gaps' => 1,
+                'impacted_functions' => 12,
+                'impacted_files' => 5,
+                'affected_flows' => 2,
+            ],
+        ]);
 
         $findings = [
             [
                 'severity' => FindingSeverity::Critical, 'category' => FindingCategory::Security, 'confidence' => 92,
                 'status' => FindingStatus::Published, 'file' => 'app/Billing/UsageRepository.php', 'lines' => [41, 41],
                 'title' => 'SQL injection through an interpolated account id',
+                'graph' => ['app/Billing/UsageRepository.php::UsageRepository.totalFor', 3], 'verification' => FindingVerification::Confirmed,
                 'body' => 'The account id is interpolated into a raw query. `$accountId` comes from the route, so a crafted value can read other accounts\' usage. Use parameter binding.',
                 'suggestion' => '        return DB::select(\'select sum(quantity) as total from usage_records where account_id = ?\', [$accountId]);',
             ],
@@ -149,6 +183,7 @@ class DemoReviewSeeder extends Seeder
                 'severity' => FindingSeverity::High, 'category' => FindingCategory::Performance, 'confidence' => 85,
                 'status' => FindingStatus::Published, 'file' => 'app/Billing/ChargeService.php', 'lines' => [58, 62],
                 'title' => 'N+1 queries when totalling usage per subscription',
+                'graph' => ['app/Billing/ChargeService.php::ChargeService.chargeUsage', 7], 'verification' => FindingVerification::Confirmed,
                 'body' => 'Each subscription triggers its own usage query inside the loop. With a few hundred subscriptions per account this becomes hundreds of queries per invoice run. Eager-load or aggregate in one grouped query.',
                 'suggestion' => null,
             ],
@@ -158,6 +193,14 @@ class DemoReviewSeeder extends Seeder
                 'title' => 'Usage on the last day of the period may be billed twice',
                 'body' => 'The period end is inclusive here but exclusive in `UsageRepository::forPeriod()`, so records at exactly midnight fall into both periods.',
                 'suggestion' => null,
+            ],
+            [
+                'severity' => FindingSeverity::High, 'category' => FindingCategory::Bug, 'confidence' => 70,
+                'status' => FindingStatus::Rejected, 'file' => 'app/Billing/ChargeService.php', 'lines' => [66, 66],
+                'title' => 'Possible division by zero when a period has no days',
+                'body' => 'The per-day rate divides by `$period->days()`, which could be zero.',
+                'suggestion' => null, 'verification' => FindingVerification::Rejected,
+                'note' => '`Period` enforces end > start in its constructor, so days() is always at least 1.',
             ],
             [
                 'severity' => FindingSeverity::Low, 'category' => FindingCategory::Maintainability, 'confidence' => 60,
@@ -175,7 +218,7 @@ class DemoReviewSeeder extends Seeder
                 'category' => $finding['category'],
                 'severity' => $finding['severity'],
                 'confidence' => $finding['confidence'],
-                'risk_score' => (int) round($finding['severity']->weight() * $finding['confidence'] / 100),
+                'risk_score' => (int) min(100, round($finding['severity']->weight() * $finding['confidence'] / 100 * (isset($finding['graph']) ? 1.2 : 1))),
                 'file_path' => $finding['file'],
                 'start_line' => $finding['lines'][0],
                 'end_line' => $finding['lines'][1],
@@ -183,6 +226,10 @@ class DemoReviewSeeder extends Seeder
                 'body' => $finding['body'],
                 'suggestion' => $finding['suggestion'],
                 'status' => $finding['status'],
+                'graph_symbol' => $finding['graph'][0] ?? null,
+                'graph_callers' => $finding['graph'][1] ?? null,
+                'verification' => $finding['verification'] ?? null,
+                'verifier_note' => $finding['note'] ?? null,
                 'github_comment_id' => $finding['status'] === FindingStatus::Published ? 5_000 + $index : null,
             ]);
         }

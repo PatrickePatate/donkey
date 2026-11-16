@@ -13,6 +13,9 @@ x-app: &app
     REDIS_HOST: redis
     REDIS_PORT: 6379
     REVERB_SERVER_HOST: 0.0.0.0
+    # The image installs Bun and kodus-graph globally (see docker/php/Dockerfile).
+    KODUS_GRAPH_BINARY: kodus-graph
+    GRAPH_EXTRA_PATH: /usr/local/bun/bin
   depends_on:
     pgsql:
       condition: service_healthy

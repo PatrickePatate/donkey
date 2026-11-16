@@ -257,10 +257,23 @@ new class extends Component
                                         <span class="ml-auto text-xs text-muted-foreground tabular-nums">Risk {{ $finding->risk_score }} · {{ $finding->confidence }}% confident</span>
                                     </div>
                                     <h3 class="font-medium">{{ $finding->title }}</h3>
-                                    <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <p class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                                         <x-ui.icon name="file-code" class="size-3.5" />
                                         <code>{{ $finding->file_path }}</code> {{ $finding->lineLabel() }}
+                                        @if ($finding->graph_symbol)
+                                            <span>·</span>
+                                            <span title="{{ $finding->graph_symbol }}">in <code>{{ Str::afterLast($finding->graph_symbol, '::') }}</code>{{ $finding->graph_callers ? ', used by '.$finding->graph_callers.' '.Str::plural('caller', $finding->graph_callers) : '' }}</span>
+                                        @endif
+                                        @if ($finding->verification === \App\Enums\FindingVerification::Confirmed)
+                                            <x-ui.badge variant="success" class="ml-1"><x-ui.icon name="check" /> Verified</x-ui.badge>
+                                        @endif
                                     </p>
+                                    @if ($finding->status === FindingStatus::Rejected && $finding->verifier_note)
+                                        <x-ui.alert>
+                                            <x-slot:icon><x-ui.icon name="shield" /></x-slot:icon>
+                                            <span class="[&_code]:rounded [&_code]:bg-muted [&_code]:px-1"><span class="font-medium text-foreground">Verifier:</span> {!! Str::inlineMarkdown($finding->verifier_note, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</span>
+                                        </x-ui.alert>
+                                    @endif
                                     <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">{!! $this->markdown($finding->body) !!}</div>
                                     @if ($finding->suggestion)
                                         <div class="grid gap-1">
@@ -278,12 +291,64 @@ new class extends Component
             </div>
 
             <div class="grid content-start gap-6">
+                @if ($run->graph_status)
+                    @php($graph = $run->graph_summary ?? [])
+                    <x-ui.card title="Impact" :description="$run->graph_status->label()">
+                        @if ($run->graph_status === \App\Enums\RunGraphStatus::Ready)
+                            <div class="grid gap-4 text-sm">
+                                @if ($run->graph_risk_level)
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-muted-foreground">Structural risk</span>
+                                        <x-ui.badge :variant="match ($run->graph_risk_level) { 'HIGH', 'CRITICAL' => 'destructive', 'MEDIUM' => 'warning', default => 'secondary' }">
+                                            {{ ucfirst(strtolower($run->graph_risk_level)) }}{{ $run->graph_risk_score !== null ? ' · '.$run->graph_risk_score : '' }}
+                                        </x-ui.badge>
+                                    </div>
+                                @endif
+                                <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+                                    <dt class="text-muted-foreground">Changed functions</dt>
+                                    <dd class="text-right tabular-nums">{{ count($graph['changed_functions'] ?? []) }}</dd>
+                                    <dt class="text-muted-foreground">Impacted</dt>
+                                    <dd class="text-right tabular-nums">{{ $graph['impacted_functions'] ?? 0 }} fn · {{ $graph['impacted_files'] ?? 0 }} files</dd>
+                                    <dt class="text-muted-foreground">Without tests</dt>
+                                    <dd @class(['text-right tabular-nums', 'font-medium text-destructive' => ($graph['test_gaps'] ?? 0) > 0])>{{ $graph['test_gaps'] ?? 0 }}</dd>
+                                    <dt class="text-muted-foreground">Affected flows</dt>
+                                    <dd class="text-right tabular-nums">{{ $graph['affected_flows'] ?? 0 }}</dd>
+                                </dl>
+                                @if (! empty($graph['changed_functions']))
+                                    <ul class="-mx-1 grid gap-1 border-t pt-3">
+                                        @foreach (collect($graph['changed_functions'])->sortByDesc('callers')->take(8) as $function)
+                                            <li class="grid gap-0.5 rounded px-1 py-1" title="{{ $function['symbol'] }}">
+                                                <div class="flex items-center gap-2">
+                                                    <code class="flex-1 truncate text-xs">{{ $function['name'] }}</code>
+                                                    <span class="text-xs text-muted-foreground tabular-nums">{{ $function['callers'] }} {{ Str::plural('caller', $function['callers']) }}</span>
+                                                    @unless ($function['tested'])
+                                                        <span class="size-1.5 shrink-0 rounded-full bg-destructive" title="No tests"></span>
+                                                    @endunless
+                                                </div>
+                                                @foreach ($function['contract'] as $change)
+                                                    <span class="truncate text-xs text-muted-foreground">⚠ {{ $change['field'] }}: {{ Str::limit($change['old'], 30) }} → {{ Str::limit($change['new'], 30) }}</span>
+                                                @endforeach
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+                            </div>
+                        @else
+                            <p class="text-sm text-muted-foreground">
+                                {{ $graph['error'] ?? 'This review ran on the diff only, without callers and test coverage from the code graph.' }}
+                            </p>
+                        @endif
+                    </x-ui.card>
+                @endif
+
                 <x-ui.card title="Details">
                     <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                         <dt class="text-muted-foreground">Risk score</dt>
                         <dd class="text-right font-medium tabular-nums">{{ $run->risk_score ?? '—' }}</dd>
                         <dt class="text-muted-foreground">Threshold</dt>
                         <dd class="text-right tabular-nums">{{ $run->risk_threshold ?? '—' }}</dd>
+                        <dt class="text-muted-foreground">Rejected by verifier</dt>
+                        <dd class="text-right tabular-nums">{{ $run->findings_rejected }}</dd>
                         <dt class="text-muted-foreground">Files</dt>
                         <dd class="text-right tabular-nums">{{ $run->files_reviewed }}</dd>
                         <dt class="text-muted-foreground">Tokens</dt>

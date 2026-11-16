@@ -30,6 +30,8 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="GITHUB_WEBHOOK_SECRET" value="testing-secret"/>
         <env name="GITHUB_APP_SLUG" value="donkey-test"/>
+        <env name="GRAPH_ENABLED" value="false"/>
+        <env name="REVIEW_VERIFIER_ENABLED" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

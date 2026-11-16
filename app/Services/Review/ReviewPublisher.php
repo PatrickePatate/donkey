@@ -3,6 +3,7 @@
 namespace App\Services\Review;
 
 use App\Enums\FindingStatus;
+use App\Enums\RunGraphStatus;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
@@ -95,8 +96,14 @@ class ReviewPublisher
             $lines[] = '```';
         }
 
+        $meta = ["Risk {$finding->risk_score}/100", "confidence {$finding->confidence}%"];
+
+        if ($finding->graph_callers !== null && $finding->graph_callers > 0) {
+            $meta[] = "used by {$finding->graph_callers} ".str('caller')->plural($finding->graph_callers);
+        }
+
         $lines[] = '';
-        $lines[] = "<sub>Risk {$finding->risk_score}/100 · confidence {$finding->confidence}%</sub>";
+        $lines[] = '<sub>'.implode(' · ', $meta).'</sub>';
 
         return implode("\n", $lines);
     }
@@ -120,6 +127,19 @@ class ReviewPublisher
         $lines[] = $published === 0
             ? '✅ No issues above the risk threshold.'
             : "Found **{$published}** ".str('issue')->plural($published).' worth a look (see inline comments).';
+
+        $graph = $run->graph_summary;
+
+        if ($run->graph_status === RunGraphStatus::Ready && is_array($graph)) {
+            $changed = count($graph['changed_functions'] ?? []);
+            $lines[] = '';
+            $lines[] = '**Impact** · '.implode(' · ', array_filter([
+                "{$changed} changed ".str('function')->plural($changed),
+                ($graph['impacted_functions'] ?? 0) > 0 ? "{$graph['impacted_functions']} impacted in {$graph['impacted_files']} ".str('file')->plural((int) $graph['impacted_files']) : null,
+                ($graph['test_gaps'] ?? 0) > 0 ? "{$graph['test_gaps']} without tests" : null,
+                $run->graph_risk_level !== null ? "structural risk {$run->graph_risk_level}" : null,
+            ]));
+        }
 
         if ($suppressed > 0) {
             $lines[] = '';

@@ -161,6 +161,17 @@ class PullRequestClient
             ->json();
     }
 
+    /**
+     * Latest commit sha of a branch.
+     */
+    public function branchHead(Repository $repository, string $branch): string
+    {
+        return (string) $this->github->asInstallation($repository->installation->installation_id)
+            ->get("/repos/{$repository->full_name}/commits/".rawurlencode($branch))
+            ->throw()
+            ->json('sha');
+    }
+
     private function request(PullRequest $pullRequest): PendingRequest
     {
         return $this->github->asInstallation($pullRequest->repository->installation->installation_id);

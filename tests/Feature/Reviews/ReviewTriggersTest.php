@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ReviewTrigger;
+use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\ProcessGitHubWebhook;
 use App\Jobs\ReviewPullRequest;
 use App\Models\GithubInstallation;
@@ -172,4 +173,31 @@ it('replies with help for unknown commands', function () {
     expect(ReviewRun::count())->toBe(0);
     Http::assertSent(fn ($request) => str_ends_with($request->url(), '/repos/acme/app/issues/7/comments')
         && str_contains($request['body'], 'full review'));
+});
+
+it('pre-builds the base graph when a pull request is merged into the default branch', function () {
+    Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class]);
+
+    processEvent('pull_request', 'closed', $this->installation, [
+        'repository' => ['id' => $this->repository->github_id],
+        'pull_request' => pullRequestPayload($this->repository, [
+            'state' => 'closed',
+            'merged_at' => now()->toIso8601String(),
+            'merge_commit_sha' => str_repeat('m', 40),
+        ]),
+    ]);
+
+    Queue::assertPushedOn('graphs', BuildRepositoryGraph::class, fn (BuildRepositoryGraph $job) => $job->commitSha === str_repeat('m', 40)
+        && $job->repository->is($this->repository));
+});
+
+it('does not build graphs for pull requests closed without merging', function () {
+    Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class]);
+
+    processEvent('pull_request', 'closed', $this->installation, [
+        'repository' => ['id' => $this->repository->github_id],
+        'pull_request' => pullRequestPayload($this->repository, ['state' => 'closed', 'merge_commit_sha' => str_repeat('m', 40)]),
+    ]);
+
+    Queue::assertNotPushed(BuildRepositoryGraph::class);
 });

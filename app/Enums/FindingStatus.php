@@ -16,6 +16,9 @@ enum FindingStatus: string
     /** A previously posted finding that no longer appears after new commits. */
     case Outdated = 'outdated';
 
+    /** Dropped by the verifier pass as a likely false positive. */
+    case Rejected = 'rejected';
+
     public function label(): string
     {
         return ucfirst($this->value);
@@ -26,7 +29,7 @@ enum FindingStatus: string
         return match ($this) {
             self::Published => 'default',
             self::Suppressed, self::Duplicate => 'secondary',
-            self::Outdated => 'outline',
+            self::Outdated, self::Rejected => 'outline',
         };
     }
 }

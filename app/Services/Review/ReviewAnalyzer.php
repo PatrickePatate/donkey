@@ -6,13 +6,14 @@ use App\Ai\Agents\CodeReviewer;
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
 use App\Models\PullRequest;
+use App\Services\Graph\GraphContext;
 
 /**
  * Runs the reviewer over each chunk of the diff and keeps only findings that point at real diff lines.
  */
 class ReviewAnalyzer
 {
-    public function analyze(PullRequest $pullRequest, ReviewContext $context): ReviewAnalysis
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -23,7 +24,7 @@ class ReviewAnalyzer
 
         foreach ($context->chunks((int) config('reviews.chunk_characters')) as $chunk) {
             $response = CodeReviewer::make()->prompt(
-                $this->prompt($pullRequest, $context, $chunk),
+                $this->prompt($pullRequest, $context, $chunk, $graph),
                 provider: config('reviews.provider'),
                 model: config('reviews.model'),
                 timeout: (int) config('reviews.timeout'),
@@ -44,6 +45,11 @@ class ReviewAnalyzer
                     $discarded++;
 
                     continue;
+                }
+
+                if ($graph !== null) {
+                    $function = $graph->functionAt($finding->path, $finding->startLine);
+                    $finding = $finding->withImpact($function?->qualifiedName, $function?->callers, $graph->impactBoost($function));
                 }
 
                 $findings[$finding->fingerprint()] ??= $finding;
@@ -99,7 +105,7 @@ class ReviewAnalyzer
     /**
      * @param  list<FilePatch>  $chunk
      */
-    private function prompt(PullRequest $pullRequest, ReviewContext $context, array $chunk): string
+    private function prompt(PullRequest $pullRequest, ReviewContext $context, array $chunk, ?GraphContext $graph): string
     {
         $sections = [];
 
@@ -120,6 +126,18 @@ class ReviewAnalyzer
             }
 
             $sections[] = '</repository_instructions>';
+        }
+
+        if ($graph !== null && $graph->prompt !== '') {
+            $sections[] = implode("\n", [
+                '<code_graph>',
+                'Structural analysis of the whole repository (deterministic, from the code graph): changed functions, their',
+                'callers, contract changes, blast radius and test coverage. Use it to judge impact beyond the diff, e.g. callers',
+                'that still assume an old signature. Absence from the graph is not proof of absence in the code.',
+                '',
+                $graph->prompt,
+                '</code_graph>',
+            ]);
         }
 
         if ($context->isIncremental) {

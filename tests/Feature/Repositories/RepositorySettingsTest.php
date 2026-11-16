@@ -1,9 +1,16 @@
 <?php
 
+use App\Enums\GraphStatus;
 use App\Enums\OrganizationRole;
+use App\Jobs\BuildRepositoryGraph;
 use App\Models\GithubInstallation;
 use App\Models\Repository;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+
+require_once __DIR__.'/../GitHub/GitHubAppTestHelpers.php';
 
 function repositoryFor($organization): Repository
 {
@@ -82,4 +89,51 @@ it('does not expose repositories of other organizations', function () {
         ->assertDontSee($foreign->full_name)
         ->call('setAutoReview', $foreign->id, false)
         ->assertNotFound();
+});
+
+it('shows the code graph status of each repository', function () {
+    [$member, $organization] = userInOrganization(OrganizationRole::Member);
+    $repository = repositoryFor($organization);
+    $repository->graphs()->create([
+        'commit_sha' => str_repeat('f', 40),
+        'status' => GraphStatus::Ready,
+        'nodes_count' => 1200,
+        'built_at' => now()->subHour(),
+    ]);
+
+    Livewire::actingAs($member)
+        ->test('pages::repositories.index')
+        ->assertSee('Ready')
+        ->assertSee('fffffff');
+});
+
+it('lets members rebuild the graph from the default branch head', function () {
+    Queue::fake([BuildRepositoryGraph::class]);
+    configureGitHubApp();
+    config(['graph.enabled' => true]);
+    Cache::put('kodus-graph:available', true);
+    [$member, $organization] = userInOrganization(OrganizationRole::Member);
+    $repository = repositoryFor($organization);
+    $repository->update(['full_name' => 'acme/app', 'default_branch' => 'develop']);
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 't'], 201),
+        'api.github.com/repos/acme/app/commits/develop' => Http::response(['sha' => str_repeat('d', 40)]),
+    ]);
+
+    Livewire::actingAs($member)
+        ->test('pages::repositories.index')
+        ->call('rebuildGraph', $repository->id);
+
+    Queue::assertPushed(BuildRepositoryGraph::class, fn (BuildRepositoryGraph $job) => $job->commitSha === str_repeat('d', 40));
+});
+
+it('warns when kodus-graph is not installed', function () {
+    config(['graph.enabled' => true]);
+    Cache::put('kodus-graph:available', false);
+    [$member, $organization] = userInOrganization(OrganizationRole::Member);
+    repositoryFor($organization);
+
+    Livewire::actingAs($member)
+        ->test('pages::repositories.index')
+        ->assertSee('Code graph unavailable');
 });

@@ -118,3 +118,37 @@ it('forbids pull requests of other organizations', function () {
 
     $this->actingAs($user)->get(route('pull-requests.show', pullRequestIn($other)))->assertForbidden();
 });
+
+it('shows the structural impact and verifier notes of a review', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+    $run = ReviewRun::factory()->completed()->for($pullRequest)->create([
+        'graph_status' => 'ready',
+        'graph_risk_level' => 'HIGH',
+        'graph_risk_score' => 81,
+        'graph_summary' => [
+            'changed_functions' => [[
+                'name' => 'charge', 'symbol' => 'app/Billing.php::Billing.charge', 'file' => 'app/Billing.php',
+                'start' => 6, 'end' => 9, 'callers' => 16, 'tested' => false,
+                'contract' => [['field' => 'params', 'old' => '($user)', 'new' => '($user, $amount)']], 'impact' => null,
+            ]],
+            'test_gaps' => 1, 'impacted_functions' => 9, 'impacted_files' => 4, 'affected_flows' => 2,
+        ],
+    ]);
+    ReviewFinding::factory()->for($run)->create([
+        'title' => 'Imaginary race condition',
+        'status' => FindingStatus::Rejected,
+        'verification' => 'rejected',
+        'verifier_note' => 'No shared state is touched.',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
+        ->assertSee('Structural risk')
+        ->assertSee('High · 81')
+        ->assertSee('16 callers')
+        ->assertSee('($user, $amount)')
+        ->set('findingStatus', 'rejected')
+        ->assertSee('Imaginary race condition')
+        ->assertSee('No shared state is touched.');
+});

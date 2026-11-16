@@ -6,6 +6,7 @@ use App\Actions\StartReview;
 use App\Actions\SyncPullRequest;
 use App\Enums\ReviewTrigger;
 use App\Enums\WebhookEventStatus;
+use App\Jobs\BuildRepositoryGraph;
 use App\Models\GithubInstallation;
 use App\Models\WebhookEvent;
 
@@ -39,6 +40,12 @@ class HandlePullRequestEvent
             && $repository->autoReviewEnabled()
         ) {
             $this->startReview->handle($pullRequest, ReviewTrigger::Auto, $payload['sender']['login'] ?? null);
+        }
+
+        $mergeCommit = $payload['pull_request']['merge_commit_sha'] ?? null;
+
+        if ($event->action === 'closed' && $pullRequest->state === 'merged' && $pullRequest->base_ref === $repository->default_branch && is_string($mergeCommit)) {
+            BuildRepositoryGraph::dispatch($repository, $mergeCommit);
         }
 
         return WebhookEventStatus::Processed;

@@ -3,12 +3,16 @@
 namespace App\Jobs;
 
 use App\Enums\FindingStatus;
+use App\Enums\FindingVerification;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Events\ReviewRunUpdated;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
+use App\Services\Graph\GraphContextProvider;
+use App\Services\Review\FindingVerifierService;
+use App\Services\Review\ProposedFinding;
 use App\Services\Review\ReviewAnalysis;
 use App\Services\Review\ReviewAnalyzer;
 use App\Services\Review\ReviewContext;
@@ -53,7 +57,9 @@ class ReviewPullRequest implements ShouldQueue
 
     public function handle(
         ReviewContextBuilder $contextBuilder,
+        GraphContextProvider $graphProvider,
         ReviewAnalyzer $analyzer,
+        FindingVerifierService $verifier,
         ReviewPublisher $publisher,
         PullRequestClient $client,
     ): void {
@@ -101,8 +107,17 @@ class ReviewPullRequest implements ShouldQueue
                 return;
             }
 
+            $this->stage($run, ReviewStage::Mapping);
+            $graph = $graphProvider->forReview($run, $context);
+            $run->update([
+                'graph_status' => $graph->status,
+                'graph_risk_level' => $graph->context?->riskLevel,
+                'graph_risk_score' => $graph->context?->riskScore,
+                'graph_summary' => $graph->context?->summary() ?? ($graph->error !== null ? ['error' => $graph->error] : null),
+            ]);
+
             $this->stage($run, ReviewStage::Analyzing);
-            $analysis = $analyzer->analyze($pullRequest, $context);
+            $analysis = $analyzer->analyze($pullRequest, $context, $graph->context);
             $run->update([
                 'tokens_input' => $analysis->inputTokens,
                 'tokens_output' => $analysis->outputTokens,
@@ -118,7 +133,12 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             $this->stage($run, ReviewStage::Validating);
-            $findings = $this->storeFindings($run, $analysis);
+            $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier));
+            $run->update([
+                'tokens_input' => $run->tokens_input + $verifier->inputTokens,
+                'tokens_output' => $run->tokens_output + $verifier->outputTokens,
+                'findings_rejected' => $findings->where('status', FindingStatus::Rejected)->count(),
+            ]);
             $this->markOutdatedFindings($run, $context, $findings);
 
             $this->stage($run, ReviewStage::Publishing);
@@ -144,9 +164,12 @@ class ReviewPullRequest implements ShouldQueue
     }
 
     /**
-     * @return Collection<int, ReviewFinding>
+     * Decide each finding's fate: duplicate of an earlier comment, below the risk gate,
+     * rejected by the verifier, or published (with the verifier's adjusted assessment).
+     *
+     * @return list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string}>
      */
-    private function storeFindings(ReviewRun $run, ReviewAnalysis $analysis): Collection
+    private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier): array
     {
         $alreadyPublished = ReviewFinding::query()
             ->where('pull_request_id', $run->pull_request_id)
@@ -155,12 +178,63 @@ class ReviewPullRequest implements ShouldQueue
             ->pluck('fingerprint')
             ->all();
 
-        return collect($analysis->findings)->map(function ($finding) use ($run, $alreadyPublished): ReviewFinding {
+        $decisions = [];
+        $candidates = [];
+
+        foreach ($analysis->findings as $index => $finding) {
             $status = match (true) {
                 in_array($finding->fingerprint(), $alreadyPublished, true) => FindingStatus::Duplicate,
                 $finding->riskScore() >= $run->risk_threshold => FindingStatus::Published,
                 default => FindingStatus::Suppressed,
             };
+
+            $decisions[$index] = ['finding' => $finding, 'status' => $status, 'verification' => null, 'note' => null];
+
+            if ($status === FindingStatus::Published) {
+                $candidates[$index] = $finding;
+            }
+        }
+
+        if ($candidates === [] || ! config('reviews.verifier.enabled')) {
+            return array_values($decisions);
+        }
+
+        $verdicts = $verifier->verify($run, $candidates);
+
+        foreach ($candidates as $index => $finding) {
+            $verdict = $verdicts[$index] ?? null;
+
+            if ($verdict === null) {
+                $decisions[$index]['verification'] = FindingVerification::Skipped;
+
+                continue;
+            }
+
+            $decisions[$index]['verification'] = $verdict->verification;
+            $decisions[$index]['note'] = $verdict->reason !== '' ? $verdict->reason : null;
+
+            if ($verdict->verification === FindingVerification::Rejected) {
+                $decisions[$index]['status'] = FindingStatus::Rejected;
+
+                continue;
+            }
+
+            $assessed = $finding->withAssessment($verdict->severity ?? $finding->severity, $verdict->confidence ?? $finding->confidence);
+            $decisions[$index]['finding'] = $assessed;
+            $decisions[$index]['status'] = $assessed->riskScore() >= $run->risk_threshold ? FindingStatus::Published : FindingStatus::Suppressed;
+        }
+
+        return array_values($decisions);
+    }
+
+    /**
+     * @param  list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string}>  $decisions
+     * @return Collection<int, ReviewFinding>
+     */
+    private function storeFindings(ReviewRun $run, array $decisions): Collection
+    {
+        return collect($decisions)->map(function (array $decision) use ($run): ReviewFinding {
+            $finding = $decision['finding'];
 
             return $run->findings()->create([
                 'pull_request_id' => $run->pull_request_id,
@@ -176,7 +250,11 @@ class ReviewPullRequest implements ShouldQueue
                 'body' => $finding->body,
                 'suggestion' => $finding->suggestion,
                 'code' => $finding->code,
-                'status' => $status,
+                'graph_symbol' => $finding->graphSymbol,
+                'graph_callers' => $finding->graphCallers,
+                'status' => $decision['status'],
+                'verification' => $decision['verification'],
+                'verifier_note' => $decision['note'],
             ]);
         });
     }

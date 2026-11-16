@@ -45,6 +45,7 @@
             "@php artisan key:generate",
             "@php artisan migrate --force",
             "npm install --ignore-scripts",
+            "npm run graph:setup",
             "npm run build"
         ],
         "dev": [

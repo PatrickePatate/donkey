@@ -74,4 +74,32 @@ return [
 
     'check_run_name' => 'Donkey review',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Verifier
+    |--------------------------------------------------------------------------
+    |
+    | A second, independent model pass that re-checks every finding that would
+    | be published, with the surrounding code, and rejects false positives.
+    |
+    */
+
+    'verifier' => [
+        'enabled' => (bool) env('REVIEW_VERIFIER_ENABLED', true),
+        'model' => env('REVIEW_VERIFIER_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
+        'context_lines' => (int) env('REVIEW_VERIFIER_CONTEXT_LINES', 25),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Graph impact boost
+    |--------------------------------------------------------------------------
+    |
+    | Findings inside changed functions that other code depends on get their
+    | risk score multiplied by up to (1 + max_impact_boost).
+    |
+    */
+
+    'max_impact_boost' => (float) env('REVIEW_MAX_IMPACT_BOOST', 0.3),
+
 ];

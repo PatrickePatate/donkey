@@ -128,3 +128,12 @@ it('lists the organizations the user will join on the verification page', functi
         ->assertOk()
         ->assertSee('you will join Acme Robotics automatically');
 });
+
+it('does not join an organization that turned auto-join off', function () {
+    $organization = Organization::factory()->create(['auto_join_domains' => ['acme.test'], 'auto_join_enabled' => false]);
+    $user = User::factory()->unverified()->create(['email' => 'grace@acme.test']);
+
+    $this->actingAs($user)->get(verificationUrl($user));
+
+    expect($user->fresh()->belongsToOrganization($organization))->toBeFalse();
+});

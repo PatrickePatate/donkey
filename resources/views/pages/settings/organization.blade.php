@@ -22,6 +22,8 @@ new #[Title('Organization settings')] class extends Component
 
     public string $botHandle = '';
 
+    public bool $autoJoinEnabled = true;
+
     public string $autoJoinDomains = '';
 
     public string $autoJoinRole = 'member';
@@ -58,6 +60,7 @@ new #[Title('Organization settings')] class extends Component
         $this->autoReviewDefault = $this->organization->auto_review_default;
         $this->ecoMode = $this->organization->eco_mode;
         $this->botHandle = $this->organization->bot_handle;
+        $this->autoJoinEnabled = $this->organization->auto_join_enabled;
         $this->autoJoinDomains = implode("\n", $this->organization->auto_join_domains ?? []);
         $this->autoJoinRole = $this->organization->auto_join_role->value;
         $this->aiProvider = $this->organization->aiProvider();
@@ -127,6 +130,7 @@ new #[Title('Organization settings')] class extends Component
             'autoReviewDefault' => ['boolean'],
             'ecoMode' => ['boolean'],
             'botHandle' => ['required', 'string', 'max:39', 'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i'],
+            'autoJoinEnabled' => ['boolean'],
             'autoJoinDomains' => ['nullable', 'string', 'max:1000'],
             'autoJoinRole' => ['required', Rule::in([OrganizationRole::Member->value, OrganizationRole::Viewer->value])],
         ]);
@@ -143,6 +147,7 @@ new #[Title('Organization settings')] class extends Component
             'auto_review_default' => $validated['autoReviewDefault'],
             'eco_mode' => $validated['ecoMode'],
             'bot_handle' => $validated['botHandle'],
+            'auto_join_enabled' => $validated['autoJoinEnabled'],
             'auto_join_domains' => $domains === [] ? null : $domains,
             'auto_join_role' => $validated['autoJoinRole'],
         ]);
@@ -222,6 +227,14 @@ new #[Title('Organization settings')] class extends Component
 
             <x-ui.card title="Joining" description="Let colleagues join without an invitation.">
                 <div class="grid gap-6">
+                    <div class="flex items-center justify-between gap-4">
+                        <div class="grid gap-1">
+                            <x-ui.label>Auto-join</x-ui.label>
+                            <p class="text-sm text-muted-foreground">When off, nobody joins automatically; your domains are kept.</p>
+                        </div>
+                        <x-ui.switch wire:model="autoJoinEnabled" :checked="$autoJoinEnabled" :disabled="! $canUpdate" />
+                    </div>
+
                     <x-ui.field label="Email domains" for="autoJoinDomains" error="autoJoinDomains" :hint="'Anyone who verifies an address at these domains joins automatically. You can only add the domain of your own verified address ('.Str::afterLast(auth()->user()->email, '@').'). One per line.'">
                         <x-ui.textarea id="autoJoinDomains" wire:model="autoJoinDomains" rows="2" class="font-mono" placeholder="acme.com" />
                     </x-ui.field>

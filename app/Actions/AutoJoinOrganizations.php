@@ -52,6 +52,6 @@ class AutoJoinOrganizations
             return new Collection;
         }
 
-        return Organization::query()->whereJsonContains('auto_join_domains', $domain)->get();
+        return Organization::query()->where('auto_join_enabled', true)->whereJsonContains('auto_join_domains', $domain)->get();
     }
 }

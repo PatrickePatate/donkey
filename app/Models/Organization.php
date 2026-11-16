@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $bot_handle
  * @property ?int $monthly_budget_cents
  * @property ?list<string> $auto_join_domains
+ * @property bool $auto_join_enabled
  * @property OrganizationRole $auto_join_role
  * @property ?string $ai_provider
  * @property ?string $ai_api_key
@@ -30,7 +31,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ?string $conversation_model
  */
 #[Hidden(['ai_api_key'])]
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model'])]
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_enabled', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -44,6 +45,7 @@ class Organization extends Model
             'eco_mode' => 'boolean',
             'monthly_budget_cents' => 'integer',
             'auto_join_domains' => 'array',
+            'auto_join_enabled' => 'boolean',
             'auto_join_role' => OrganizationRole::class,
             'ai_api_key' => 'encrypted',
         ];

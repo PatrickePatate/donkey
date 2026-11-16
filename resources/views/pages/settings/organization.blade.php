@@ -80,21 +80,25 @@ new #[Title('Organization settings')] class extends Component
             'conversationModel' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // A key belongs to one provider: never send the old provider's key to the new one.
+        $providerChanged = $validated['aiProvider'] !== $this->organization->aiProvider();
+        $newKey = filled($validated['aiApiKey']) ? trim($validated['aiApiKey']) : null;
+
         $this->organization->update([
             'ai_provider' => $validated['aiProvider'],
             'review_model' => $validated['reviewModel'] ?: null,
             'eco_model' => $validated['ecoModel'] ?: null,
             'verifier_model' => $validated['verifierModel'] ?: null,
             'conversation_model' => $validated['conversationModel'] ?: null,
-            ...(filled($validated['aiApiKey']) ? ['ai_api_key' => trim($validated['aiApiKey'])] : []),
+            ...($newKey !== null || $providerChanged ? ['ai_api_key' => $newKey] : []),
         ]);
 
         $changes = array_diff_key(AuditLog::changes($this->organization), ['ai_api_key' => true]);
 
-        app(AuditLog::class)->record($this->organization, 'organization.ai_changed', $this->organization, [...$changes, 'api_key_changed' => filled($validated['aiApiKey'])]);
+        app(AuditLog::class)->record($this->organization, 'organization.ai_changed', $this->organization, [...$changes, 'api_key_changed' => $newKey !== null || $providerChanged]);
 
         $this->aiApiKey = '';
-        $this->dispatch('toast', message: 'AI settings saved.', variant: 'success');
+        $this->dispatch('toast', message: $newKey === null && $providerChanged ? 'AI settings saved. Add an API key for the new provider to resume reviews.' : 'AI settings saved.', variant: 'success');
     }
 
     public function removeAiKey(): void

@@ -46,6 +46,20 @@ it('lets owners choose the provider, key and models, and stores the key encrypte
     expect($organization->fresh()->hasAiKey())->toBeFalse();
 });
 
+it('drops the stored key when the provider changes without a new key', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $organization->update(['ai_provider' => 'anthropic', 'ai_api_key' => 'sk-ant-secret']);
+
+    Livewire::actingAs($owner)
+        ->test('pages::settings.organization')
+        ->set('aiProvider', 'deepseek')
+        ->call('saveAi')
+        ->assertHasNoErrors();
+
+    expect($organization->fresh()->aiProvider())->toBe('deepseek')
+        ->and($organization->fresh()->hasAiKey())->toBeFalse();
+});
+
 it('keeps the AI provider settings away from admins', function () {
     [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
     [$admin] = userInOrganization();

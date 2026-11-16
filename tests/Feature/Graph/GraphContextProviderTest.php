@@ -131,6 +131,20 @@ it('builds the base graph, checks out the head and returns structured context', 
         && in_array($graph->path, $process->command, true));
 });
 
+it('never passes changed file names that look like flags to kodus-graph', function () {
+    fakeGraphProcesses();
+    $patch = "@@ -1 +1 @@\n-a\n+b";
+    $context = new ReviewContext(str_repeat('b', 40), false, [
+        'src/auth.ts' => FilePatch::fromGitHub('src/auth.ts', 'modified', $patch),
+        '--out' => FilePatch::fromGitHub('--out', 'added', $patch),
+    ], [], []);
+
+    app(GraphContextProvider::class)->forReview($this->run, $context);
+
+    Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'context' && in_array('src/auth.ts', $process->command, true));
+    Process::assertDidntRun(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'context' && count(array_keys($process->command, '--out', true)) > 1);
+});
+
 it('authenticates git through the environment, never through arguments', function () {
     fakeGraphProcesses();
 

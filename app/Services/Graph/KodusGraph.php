@@ -57,6 +57,9 @@ class KodusGraph
      */
     public function context(string $repoDirectory, string $graphPath, array $files, string $diffPath, string $format, string $outputPath): ProcessResult
     {
+        // PR file names are attacker-controlled: a file named "--out" would be read as a flag, so skip them.
+        $files = array_values(array_filter($files, fn (string $file): bool => ! str_starts_with($file, '-')));
+
         return $this->run([
             'context',
             '--files', ...$files,

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\OrganizationRole;
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,8 +22,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ?int $monthly_budget_cents
  * @property ?list<string> $auto_join_domains
  * @property OrganizationRole $auto_join_role
+ * @property ?string $ai_provider
+ * @property ?string $ai_api_key
+ * @property ?string $review_model
+ * @property ?string $eco_model
+ * @property ?string $verifier_model
+ * @property ?string $conversation_model
  */
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role'])]
+#[Hidden(['ai_api_key'])]
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -37,7 +45,28 @@ class Organization extends Model
             'monthly_budget_cents' => 'integer',
             'auto_join_domains' => 'array',
             'auto_join_role' => OrganizationRole::class,
+            'ai_api_key' => 'encrypted',
         ];
+    }
+
+    public function aiProvider(): string
+    {
+        return $this->ai_provider ?: 'anthropic';
+    }
+
+    public function hasAiKey(): bool
+    {
+        return filled($this->ai_api_key);
+    }
+
+    /**
+     * The model for a role (review, eco, verifier or conversation): its own setting, else the review model, else the built-in default.
+     */
+    public function modelFor(string $role): string
+    {
+        $own = $role === 'review' ? $this->review_model : $this->{"{$role}_model"};
+
+        return (string) ($own ?: $this->review_model ?: config($role === 'review' ? 'reviews.model' : "reviews.{$role}.model"));
     }
 
     /**

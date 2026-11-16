@@ -26,6 +26,31 @@ new #[Title('Organization settings')] class extends Component
 
     public string $autoJoinRole = 'member';
 
+    public string $aiProvider = 'anthropic';
+
+    public string $aiApiKey = '';
+
+    public string $reviewModel = '';
+
+    public string $ecoModel = '';
+
+    public string $verifierModel = '';
+
+    public string $conversationModel = '';
+
+    /**
+     * @var array<string, string>
+     */
+    public const AI_PROVIDERS = [
+        'anthropic' => 'Anthropic',
+        'openai' => 'OpenAI',
+        'openrouter' => 'OpenRouter',
+        'gemini' => 'Google Gemini',
+        'groq' => 'Groq',
+        'deepseek' => 'DeepSeek',
+        'mistral' => 'Mistral',
+    ];
+
     public function mount(): void
     {
         $this->name = $this->organization->name;
@@ -35,6 +60,51 @@ new #[Title('Organization settings')] class extends Component
         $this->botHandle = $this->organization->bot_handle;
         $this->autoJoinDomains = implode("\n", $this->organization->auto_join_domains ?? []);
         $this->autoJoinRole = $this->organization->auto_join_role->value;
+        $this->aiProvider = $this->organization->aiProvider();
+        $this->reviewModel = (string) $this->organization->review_model;
+        $this->ecoModel = (string) $this->organization->eco_model;
+        $this->verifierModel = (string) $this->organization->verifier_model;
+        $this->conversationModel = (string) $this->organization->conversation_model;
+    }
+
+    public function saveAi(): void
+    {
+        Gate::authorize('manageAi', $this->organization);
+
+        $validated = $this->validate([
+            'aiProvider' => ['required', Rule::in(array_keys(self::AI_PROVIDERS))],
+            'aiApiKey' => ['nullable', 'string', 'max:500'],
+            'reviewModel' => ['nullable', 'string', 'max:255'],
+            'ecoModel' => ['nullable', 'string', 'max:255'],
+            'verifierModel' => ['nullable', 'string', 'max:255'],
+            'conversationModel' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $this->organization->update([
+            'ai_provider' => $validated['aiProvider'],
+            'review_model' => $validated['reviewModel'] ?: null,
+            'eco_model' => $validated['ecoModel'] ?: null,
+            'verifier_model' => $validated['verifierModel'] ?: null,
+            'conversation_model' => $validated['conversationModel'] ?: null,
+            ...(filled($validated['aiApiKey']) ? ['ai_api_key' => trim($validated['aiApiKey'])] : []),
+        ]);
+
+        $changes = array_diff_key(AuditLog::changes($this->organization), ['ai_api_key' => true]);
+
+        app(AuditLog::class)->record($this->organization, 'organization.ai_changed', $this->organization, [...$changes, 'api_key_changed' => filled($validated['aiApiKey'])]);
+
+        $this->aiApiKey = '';
+        $this->dispatch('toast', message: 'AI settings saved.', variant: 'success');
+    }
+
+    public function removeAiKey(): void
+    {
+        Gate::authorize('manageAi', $this->organization);
+
+        $this->organization->update(['ai_api_key' => null]);
+        app(AuditLog::class)->record($this->organization, 'organization.ai_changed', $this->organization, ['api_key_removed' => true]);
+
+        $this->dispatch('toast', message: 'API key removed. Reviews are paused until a new one is saved.', variant: 'success');
     }
 
     #[Computed]
@@ -199,4 +269,48 @@ new #[Title('Organization settings')] class extends Component
             </x-ui.card>
         </fieldset>
     </form>
+
+    @can('manageAi', $this->organization)
+        <form wire:submit="saveAi">
+            <x-ui.card title="AI provider" description="Reviews, answers, learnings and documentation use this provider and key. Only owners can see and change it.">
+                <div class="grid gap-6">
+                    <x-ui.field label="Provider" for="aiProvider" error="aiProvider">
+                        <x-ui.select id="aiProvider" wire:model="aiProvider" class="sm:max-w-xs">
+                            @foreach (self::AI_PROVIDERS as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </x-ui.select>
+                    </x-ui.field>
+
+                    <x-ui.field label="API key" for="aiApiKey" error="aiApiKey" :hint="$this->organization->hasAiKey() ? 'A key is saved. Leave blank to keep it, or paste a new one to replace it.' : 'No key saved: reviews are paused until you add one.'">
+                        <x-ui.input id="aiApiKey" type="password" wire:model="aiApiKey" autocomplete="off" placeholder="{{ $this->organization->hasAiKey() ? '••••••••••••' : 'sk-…' }}" />
+                    </x-ui.field>
+
+                    <div class="grid gap-6 sm:grid-cols-2">
+                        <x-ui.field label="Review model" for="reviewModel" error="reviewModel" :hint="'Default: '.config('reviews.model').'. With OpenRouter use vendor/model ids.'">
+                            <x-ui.input id="reviewModel" wire:model="reviewModel" placeholder="{{ config('reviews.model') }}" />
+                        </x-ui.field>
+                        <x-ui.field label="Eco-mode model" for="ecoModel" error="ecoModel" hint="Small, low-risk tasks when eco-mode is on. Empty uses the review model.">
+                            <x-ui.input id="ecoModel" wire:model="ecoModel" />
+                        </x-ui.field>
+                        <x-ui.field label="Verifier model" for="verifierModel" error="verifierModel" hint="Re-checks findings. Empty uses the review model.">
+                            <x-ui.input id="verifierModel" wire:model="verifierModel" />
+                        </x-ui.field>
+                        <x-ui.field label="Conversation model" for="conversationModel" error="conversationModel" hint="Answers to @mentions on GitHub. Empty uses the review model.">
+                            <x-ui.input id="conversationModel" wire:model="conversationModel" />
+                        </x-ui.field>
+                    </div>
+                </div>
+
+                <x-slot:footer>
+                    <div class="flex flex-wrap gap-2">
+                        <x-ui.button type="submit">Save AI settings</x-ui.button>
+                        @if ($this->organization->hasAiKey())
+                            <x-ui.button type="button" variant="outline" wire:click="removeAiKey" wire:confirm="Remove the API key? Reviews are paused until you save a new one.">Remove key</x-ui.button>
+                        @endif
+                    </div>
+                </x-slot:footer>
+            </x-ui.card>
+        </form>
+    @endcan
 </div>

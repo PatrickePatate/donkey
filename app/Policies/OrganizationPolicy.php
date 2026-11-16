@@ -36,6 +36,14 @@ class OrganizationPolicy
         return $user->hasRoleIn($organization, OrganizationRole::Owner);
     }
 
+    /**
+     * The AI provider, its API key and models are for owners only.
+     */
+    public function manageAi(User $user, Organization $organization): bool
+    {
+        return $user->hasRoleIn($organization, OrganizationRole::Owner);
+    }
+
     public function viewAudit(User $user, Organization $organization): bool
     {
         return $user->hasRoleIn($organization, OrganizationRole::Admin);

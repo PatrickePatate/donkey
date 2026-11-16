@@ -24,7 +24,8 @@ use Throwable;
  */
 #[Signature('eval:run
     {--case=* : Only run these cases (file names without .json)}
-    {--model= : Model to evaluate instead of config("reviews.model")}
+    {--organization= : Id of the organization whose AI provider and key to use}
+    {--model= : Model to evaluate instead of the organization review model}
     {--threshold=50 : Risk score at which a finding would be posted on GitHub}
     {--json= : Also write the results to this file}
     {--force : Do not ask before calling the model}')]
@@ -36,6 +37,8 @@ class RunEvaluations extends Command
      */
     private const LINE_TOLERANCE = 3;
 
+    private Organization $organization;
+
     public function handle(ReviewAnalyzer $analyzer, UsageMeter $usage): int
     {
         $cases = $this->cases();
@@ -46,8 +49,17 @@ class RunEvaluations extends Command
             return self::FAILURE;
         }
 
-        $model = (string) ($this->option('model') ?: config('reviews.model'));
-        config(['reviews.model' => $model]);
+        $organization = Organization::query()->find($this->option('organization'));
+
+        if ($organization === null || ! $organization->hasAiKey()) {
+            $this->error('Pass --organization=<id> of an organization that has an AI provider configured.');
+
+            return self::FAILURE;
+        }
+
+        $organization->review_model = $this->option('model') ?: $organization->review_model;
+        $this->organization = $organization;
+        $model = $organization->modelFor('review');
 
         if (! $this->option('force') && ! $this->confirm('This calls '.$model.' for '.count($cases).' '.str('case')->plural(count($cases)).' and costs real money. Continue?', true)) {
             return self::SUCCESS;
@@ -100,7 +112,7 @@ class RunEvaluations extends Command
      */
     private function pullRequest(array $case): PullRequest
     {
-        $repository = (new Repository(['full_name' => 'eval/fixture']))->setRelation('organization', new Organization(['name' => 'Evaluation']));
+        $repository = (new Repository(['full_name' => 'eval/fixture']))->setRelation('organization', $this->organization);
 
         return (new PullRequest([
             'title' => $case['title'],

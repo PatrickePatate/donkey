@@ -101,12 +101,19 @@ class ReviewPullRequest implements ShouldQueue
             return;
         }
 
-        if ($usage->isOverBudget($pullRequest->repository->organization)) {
-            $this->finish($run, ReviewRunStatus::Skipped, 'The organization reached its monthly AI budget.');
+        $organization = $pullRequest->repository->organization;
+        $blocked = match (true) {
+            ! $organization->hasAiKey() => ['The organization has no AI provider configured.', 'AI provider not configured', 'An owner can add a provider, API key and models in the organization settings in Donkey.'],
+            $usage->isOverBudget($organization) => ['The organization reached its monthly AI budget.', 'Monthly AI budget reached', 'Reviews resume next month, or when an owner raises the budget in Donkey.'],
+            default => null,
+        };
+
+        if ($blocked !== null) {
+            $this->finish($run, ReviewRunStatus::Skipped, $blocked[0]);
 
             if (! $run->is_dry_run) {
                 $run->update(['github_check_run_id' => $client->createCheckRun($pullRequest, config('reviews.check_run_name'), $run->head_sha, route('pull-requests.show', $pullRequest))]);
-                $this->completeCheck($client, $run, 'skipped', 'Monthly AI budget reached', 'Reviews resume next month, or when an owner raises the budget in Donkey.');
+                $this->completeCheck($client, $run, 'skipped', $blocked[1], $blocked[2]);
             }
 
             return;
@@ -115,8 +122,8 @@ class ReviewPullRequest implements ShouldQueue
         $run->update([
             'status' => ReviewRunStatus::Running,
             'started_at' => now(),
-            'provider' => config('reviews.provider'),
-            'model' => filled($run->agent?->model) ? $run->agent->model : config('reviews.model'),
+            'provider' => $pullRequest->repository->organization->aiProvider(),
+            'model' => filled($run->agent?->model) ? $run->agent->model : $pullRequest->repository->organization->modelFor('review'),
             'risk_threshold' => $pullRequest->repository->effectiveRiskThreshold(),
         ]);
 

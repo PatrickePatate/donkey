@@ -7,6 +7,7 @@ use App\Enums\AiFeature;
 use App\Enums\FindingSeverity;
 use App\Enums\FindingVerification;
 use App\Models\ReviewRun;
+use App\Services\Ai\OrganizationAi;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Knowledge\ReviewKnowledge;
 use App\Services\Usage\UsageMeter;
@@ -21,7 +22,7 @@ class FindingVerifierService
 
     public int $outputTokens = 0;
 
-    public function __construct(private PullRequestClient $client, private UsageMeter $usage, private ModelRouter $models) {}
+    public function __construct(private PullRequestClient $client, private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai) {}
 
     /**
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
@@ -39,7 +40,7 @@ class FindingVerifierService
         try {
             $response = FindingVerifier::make()->prompt(
                 $this->prompt($run, $findings, $knowledge),
-                provider: config('reviews.provider'),
+                provider: $this->ai->provider($organization),
                 model: $model,
                 timeout: (int) config('reviews.timeout'),
             );
@@ -55,7 +56,7 @@ class FindingVerifierService
         $this->usage->record(
             $organization,
             AiFeature::Verification,
-            config('reviews.provider'),
+            $organization->aiProvider(),
             $model,
             $response->usage,
             pullRequest: $run->pullRequest,

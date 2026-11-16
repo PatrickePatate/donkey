@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Ai\Agents\RepositoryDocumenter;
 use App\Enums\AiFeature;
 use App\Models\Repository;
+use App\Services\Ai\OrganizationAi;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Usage\UsageMeter;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -49,7 +50,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
         return ((int) config('documentation.delay_minutes') + 30) * 60;
     }
 
-    public function handle(PullRequestClient $client, UsageMeter $usage): void
+    public function handle(PullRequestClient $client, UsageMeter $usage, OrganizationAi $ai): void
     {
         $repository = $this->repository->fresh(['organization', 'installation', 'document']);
 
@@ -67,10 +68,10 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
 
             $tree = $client->tree($repository, $sha);
             $prompt = $this->prompt($repository, $sha, $tree, $existing?->content, $client);
-            $model = config('documentation.model') ?: config('reviews.model');
+            $model = $repository->organization->modelFor('review');
             $response = RepositoryDocumenter::make()->prompt(
                 $prompt,
-                provider: config('reviews.provider'),
+                provider: $ai->provider($repository->organization),
                 model: $model,
                 timeout: (int) config('reviews.timeout'),
             );
@@ -78,7 +79,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
             $usage->record(
                 $repository->organization,
                 AiFeature::Documentation,
-                config('reviews.provider'),
+                $repository->organization->aiProvider(),
                 $model,
                 $response->usage,
                 $repository,

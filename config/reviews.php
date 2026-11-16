@@ -7,19 +7,17 @@ return [
     | Review model
     |--------------------------------------------------------------------------
     |
-    | The laravel/ai provider and model used for pull request reviews. The
-    | provider must be configured in config/ai.php with its API key.
+    | Built-in default models. Each organization picks its provider, API key and
+    | models in its settings; these only apply to roles it leaves empty.
     |
     */
 
-    'provider' => env('REVIEW_AI_PROVIDER', env('AI_PROVIDER', 'anthropic')),
-
-    'model' => env('REVIEW_AI_MODEL', 'claude-sonnet-5-5'),
+    'model' => 'claude-sonnet-5-5',
 
     'timeout' => (int) env('REVIEW_AI_TIMEOUT', 180),
 
     'eco' => [
-        'model' => env('REVIEW_ECO_MODEL', 'claude-haiku-5-5'),
+        'model' => 'claude-haiku-5-5',
         'small_chunk_characters' => (int) env('REVIEW_ECO_SMALL_CHUNK_CHARACTERS', 8_000),
         'verifier_max_findings' => (int) env('REVIEW_ECO_VERIFIER_MAX_FINDINGS', 3),
     ],
@@ -92,7 +90,7 @@ return [
 
     'verifier' => [
         'enabled' => (bool) env('REVIEW_VERIFIER_ENABLED', true),
-        'model' => env('REVIEW_VERIFIER_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
+        'model' => 'claude-sonnet-5-5',
         'context_lines' => (int) env('REVIEW_VERIFIER_CONTEXT_LINES', 25),
     ],
 
@@ -136,7 +134,7 @@ return [
     */
 
     'conversation' => [
-        'model' => env('CONVERSATION_AI_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
+        'model' => 'claude-sonnet-5-5',
         'max_diff_characters' => (int) env('CONVERSATION_MAX_DIFF_CHARACTERS', 40_000),
         'max_history_messages' => (int) env('CONVERSATION_MAX_HISTORY_MESSAGES', 12),
         'max_findings' => 20,

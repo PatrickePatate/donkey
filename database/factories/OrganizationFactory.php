@@ -24,6 +24,8 @@ class OrganizationFactory extends Factory
             'auto_review_default' => true,
             'eco_mode' => false,
             'bot_handle' => 'donkey',
+            'ai_provider' => 'anthropic',
+            'ai_api_key' => 'test-api-key',
         ];
     }
 

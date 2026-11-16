@@ -111,7 +111,7 @@ it('generates documentation from the repository tree and selected source files',
         ->generated_at->not->toBeNull();
     expect(AiUsage::sole())
         ->feature->toBe(AiFeature::Documentation)
-        ->model->toBe(config('documentation.model') ?? config('reviews.model'))
+        ->model->toBe(config('reviews.model'))
         ->repository_id->toBe($repository->id);
 
     RepositoryDocumenter::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Repository overview from the README.')

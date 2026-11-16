@@ -2,7 +2,7 @@
 
 **An AI code reviewer for GitHub that learns how your team works.**
 
-Donkey reviews pull requests the moment they open: it leaves inline comments with ready-to-commit suggestions, answers questions in the thread, and gets better every time someone tells it it was wrong. It runs as a GitHub App on your own infrastructure, with your own model API key.
+Donkey reviews pull requests the moment they open: it leaves inline comments with ready-to-commit suggestions, answers questions in the thread, and gets better every time someone tells it it was wrong. It runs as a GitHub App on your own infrastructure, with your own model API key, set in the organization settings.
 
 ## Features
 
@@ -41,7 +41,7 @@ Donkey reviews pull requests the moment they open: it leaves inline comments wit
 - PostgreSQL 16+ with the [pgvector](https://github.com/pgvector/pgvector) extension
 - Redis
 - A [GitHub App](#2-create-the-github-app) you own
-- An API key for a model provider supported by [`laravel/ai`](https://laravel.com/docs/ai) (Anthropic by default; OpenRouter works with `AI_PROVIDER=openrouter`, `OPENROUTER_API_KEY` and `REVIEW_AI_MODEL`)
+- An API key for a model provider (Anthropic, OpenAI, OpenRouter, Gemini, Groq, DeepSeek or Mistral). It is entered by an owner in **Settings → Organization → AI provider**, together with the models to use; it is stored encrypted, not in the environment.
 
 Docker Compose can provide PostgreSQL and Redis, or the whole stack (see [Deploy with Docker](#deploy-with-docker)).
 
@@ -60,7 +60,7 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
    cp .env.production.example .env.production
    ```
 
-   Set at least `APP_URL`, `DB_PASSWORD`, `REVERB_APP_KEY`, `REVERB_APP_SECRET` (any random strings), the `GITHUB_*` values and `ANTHROPIC_API_KEY`. Generate `APP_KEY`:
+   Set at least `APP_URL`, `DB_PASSWORD`, `REVERB_APP_KEY`, `REVERB_APP_SECRET` (any random strings) and the `GITHUB_*` values. Generate `APP_KEY`:
 
    ```bash
    docker compose --env-file .env.production -f compose.prod.yaml run --rm --no-deps -e APP_KEY=x app php artisan key:generate --show
@@ -152,8 +152,6 @@ GITHUB_APP_CLIENT_SECRET=
 GITHUB_APP_PRIVATE_KEY_PATH=storage/app/private/github-app.pem
 GITHUB_WEBHOOK_SECRET=
 
-# Model provider
-ANTHROPIC_API_KEY=
 ```
 
 Real-time updates use Laravel Reverb. Generate its credentials with `php artisan install:broadcasting` if your `.env` has no `REVERB_*` values, and set `BROADCAST_CONNECTION=reverb`.
@@ -188,7 +186,7 @@ php artisan schedule:work
 | `config/retention.php` | How long webhooks, usage, audit events and conversations are kept |
 | `config/auto_join.php` | Public email providers that can never be auto-joined |
 
-Useful environment variables: `REGISTRATION_ENABLED=false` (close sign-ups once your own account exists; people with a pending invitation can still register), `REVIEW_AI_MODEL`, `REVIEW_VERIFIER_ENABLED`, `GRAPH_ENABLED`, `LEARNING_EMBEDDINGS_PROVIDER` (set it, for example to `openai`, to enable similarity search over memories and learnings).
+Useful environment variables: `REGISTRATION_ENABLED=false` (close sign-ups once your own account exists; people with a pending invitation can still register), `REVIEW_VERIFIER_ENABLED`, `GRAPH_ENABLED`, `LEARNING_EMBEDDINGS_PROVIDER` (set it, for example to `openai`, to enable similarity search over memories and learnings).
 
 ## Using Donkey
 

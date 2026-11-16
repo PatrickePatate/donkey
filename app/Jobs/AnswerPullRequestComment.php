@@ -8,6 +8,7 @@ use App\Enums\ConversationRole;
 use App\Enums\ConversationStatus;
 use App\Events\ConversationUpdated;
 use App\Models\ConversationMessage;
+use App\Services\Ai\OrganizationAi;
 use App\Services\Conversation\AssistantPromptBuilder;
 use App\Services\Conversation\CommentResponder;
 use App\Services\Usage\UsageMeter;
@@ -35,7 +36,7 @@ class AnswerPullRequestComment implements ShouldQueue
         $this->onQueue('conversations');
     }
 
-    public function handle(AssistantPromptBuilder $prompts, CommentResponder $responder, UsageMeter $usage): void
+    public function handle(AssistantPromptBuilder $prompts, CommentResponder $responder, UsageMeter $usage, OrganizationAi $ai): void
     {
         $question = $this->question->fresh(['pullRequest.repository.organization', 'pullRequest.repository.installation', 'finding']);
 
@@ -59,14 +60,14 @@ class AnswerPullRequestComment implements ShouldQueue
         try {
             $response = PullRequestAssistant::make(handle: $handle)->prompt(
                 $prompts->build($question),
-                provider: config('reviews.provider'),
-                model: config('reviews.conversation.model'),
+                provider: $ai->provider($organization),
+                model: $organization->modelFor('conversation'),
                 timeout: (int) config('reviews.timeout'),
             );
 
             $answer = trim($response->text);
             $tokens = [$response->usage->inputTokens, $response->usage->outputTokens];
-            $usage->record($organization, AiFeature::Conversation, config('reviews.provider'), config('reviews.conversation.model'), $response->usage, pullRequest: $pullRequest);
+            $usage->record($organization, AiFeature::Conversation, $organization->aiProvider(), $organization->modelFor('conversation'), $response->usage, pullRequest: $pullRequest);
         } catch (Throwable $exception) {
             $delay = TransientFailure::backoff($exception, $this->attempts());
 

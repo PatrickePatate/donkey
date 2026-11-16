@@ -54,7 +54,7 @@ return [
     'providers' => [
         'anthropic' => [
             'driver' => 'anthropic',
-            'key' => env('ANTHROPIC_API_KEY'),
+            'key' => null, // set per organization in Donkey
             'url' => env('ANTHROPIC_URL', 'https://api.anthropic.com/v1'),
         ],
 
@@ -92,7 +92,7 @@ return [
 
         'deepseek' => [
             'driver' => 'deepseek',
-            'key' => env('DEEPSEEK_API_KEY'),
+            'key' => null, // set per organization in Donkey
         ],
 
         'eleven' => [
@@ -102,13 +102,13 @@ return [
 
         'gemini' => [
             'driver' => 'gemini',
-            'key' => env('GEMINI_API_KEY'),
+            'key' => null, // set per organization in Donkey
             'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
         ],
 
         'groq' => [
             'driver' => 'groq',
-            'key' => env('GROQ_API_KEY'),
+            'key' => null, // set per organization in Donkey
         ],
 
         'jina' => [
@@ -118,7 +118,7 @@ return [
 
         'mistral' => [
             'driver' => 'mistral',
-            'key' => env('MISTRAL_API_KEY'),
+            'key' => null, // set per organization in Donkey
         ],
 
         'ollama' => [
@@ -142,7 +142,7 @@ return [
 
         'openrouter' => [
             'driver' => 'openrouter',
-            'key' => env('OPENROUTER_API_KEY'),
+            'key' => null, // set per organization in Donkey
         ],
 
         'typesafe' => [

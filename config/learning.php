@@ -44,7 +44,6 @@ return [
     */
 
     'synthesis' => [
-        'model' => env('LEARNING_AI_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
         'max_signals' => (int) env('LEARNING_MAX_SIGNALS', 40),
         'delay_minutes' => (int) env('LEARNING_SYNTHESIS_DELAY', 10),
     ],

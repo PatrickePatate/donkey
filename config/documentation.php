@@ -2,8 +2,6 @@
 
 return [
 
-    'model' => env('DOCS_MODEL', env('REVIEW_AI_MODEL', 'claude-sonnet-5-5')),
-
     'delay_minutes' => (int) env('DOCS_DELAY_MINUTES', 10),
 
     'key_files' => array_filter(array_map('trim', explode(',', env('DOCS_KEY_FILES', 'README.md,composer.json,package.json')))),

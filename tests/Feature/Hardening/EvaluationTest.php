@@ -2,6 +2,7 @@
 
 use App\Ai\Agents\CodeReviewer;
 use App\Models\AiUsage;
+use App\Models\Organization;
 use Illuminate\Support\Facades\File;
 
 it('scores the reviewer against a seeded case without billing anyone', function () {
@@ -21,8 +22,9 @@ it('scores the reviewer against a seeded case without billing anyone', function 
         ]],
     ]]);
     $path = tempnam(sys_get_temp_dir(), 'eval').'.json';
+    $organization = Organization::factory()->create(['ai_provider' => 'openrouter', 'review_model' => 'vendor/model']);
 
-    $this->artisan('eval:run', ['--case' => ['sql-injection'], '--force' => true, '--json' => $path])
+    $this->artisan('eval:run', ['--case' => ['sql-injection'], '--organization' => $organization->id, '--force' => true, '--json' => $path])
         ->expectsOutputToContain('Recall 100% · precision 100% · precision of posted findings 100% · severity within one level 100%')
         ->assertSuccessful();
 
@@ -35,4 +37,9 @@ it('scores the reviewer against a seeded case without billing anyone', function 
         ->and(AiUsage::count())->toBe(0);
 
     CodeReviewer::assertPromptedTimes(1);
+    CodeReviewer::assertPrompted(fn ($prompt) => $prompt->model === 'vendor/model');
+});
+
+it('refuses to run evaluations without an organization that has an AI provider', function () {
+    $this->artisan('eval:run', ['--force' => true])->expectsOutputToContain('Pass --organization=')->assertFailed();
 });

@@ -12,17 +12,17 @@ class ModelRouter
     /**
      * @param  list<FilePatch>  $chunk
      */
-    public function reviewModel(?Organization $organization, ?ReviewAgent $agent, array $chunk, ?GraphContext $graph): string
+    public function reviewModel(Organization $organization, ?ReviewAgent $agent, array $chunk, ?GraphContext $graph): string
     {
         if (filled($agent?->model)) {
             return (string) $agent->model;
         }
 
-        if (! $organization?->eco_mode || $this->hasHighGraphRisk($graph) || $this->patchCharacters($chunk) > (int) config('reviews.eco.small_chunk_characters')) {
-            return (string) config('reviews.model');
+        if (! $organization->eco_mode || $this->hasHighGraphRisk($graph) || $this->patchCharacters($chunk) > (int) config('reviews.eco.small_chunk_characters')) {
+            return $organization->modelFor('review');
         }
 
-        return (string) config('reviews.eco.model');
+        return $organization->modelFor('eco');
     }
 
     /**
@@ -31,16 +31,16 @@ class ModelRouter
     public function verifierModel(Organization $organization, array $findings): string
     {
         if (! $organization->eco_mode || count($findings) > (int) config('reviews.eco.verifier_max_findings')) {
-            return (string) config('reviews.verifier.model');
+            return $organization->modelFor('verifier');
         }
 
         foreach ($findings as $finding) {
             if (in_array($finding->severity, [FindingSeverity::Critical, FindingSeverity::High], true)) {
-                return (string) config('reviews.verifier.model');
+                return $organization->modelFor('verifier');
             }
         }
 
-        return (string) config('reviews.eco.model');
+        return $organization->modelFor('eco');
     }
 
     /**

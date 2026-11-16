@@ -9,6 +9,7 @@ use App\Enums\FindingSeverity;
 use App\Models\Organization;
 use App\Models\PullRequest;
 use App\Models\ReviewAgent;
+use App\Services\Ai\OrganizationAi;
 use App\Services\Graph\GraphContext;
 use App\Services\Knowledge\ReviewKnowledge;
 use App\Services\Usage\UsageMeter;
@@ -19,7 +20,7 @@ use Closure;
  */
 class ReviewAnalyzer
 {
-    public function __construct(private UsageMeter $usage, private ModelRouter $models) {}
+    public function __construct(private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai) {}
 
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
@@ -33,15 +34,18 @@ class ReviewAnalyzer
         $outputTokens = 0;
         $discarded = 0;
         $organization = $this->meteredOrganization($pullRequest);
+        $aiOrganization = $pullRequest->repository->organization;
+        // Evaluations (unsaved pull requests) always run on the main model.
+        $routingOrganization = $organization ?? (clone $aiOrganization)->fill(['eco_mode' => false]);
 
         $chunks = $context->chunks((int) config('reviews.chunk_characters'));
 
         foreach ($chunks as $number => $chunk) {
-            $model = $this->models->reviewModel($organization, $agent, $chunk, $graph);
+            $model = $this->models->reviewModel($routingOrganization, $agent, $chunk, $graph);
             $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
             $response = CodeReviewer::make(agent: $agent)->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
-                provider: config('reviews.provider'),
+                provider: $this->ai->provider($aiOrganization),
                 model: $model,
                 timeout: (int) config('reviews.timeout'),
             );
@@ -53,7 +57,7 @@ class ReviewAnalyzer
                 $this->usage->record(
                     $organization,
                     $agent !== null ? AiFeature::Agent : AiFeature::Review,
-                    config('reviews.provider'),
+                    $aiOrganization->aiProvider(),
                     $model,
                     $response->usage,
                     pullRequest: $pullRequest,

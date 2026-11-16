@@ -12,6 +12,7 @@ use App\Enums\SignalType;
 use App\Models\FindingSignal;
 use App\Models\Learning;
 use App\Models\Repository;
+use App\Services\Ai\OrganizationAi;
 use App\Services\Usage\UsageMeter;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -57,7 +58,7 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
         return ((int) config('learning.synthesis.delay_minutes') + 10) * 60;
     }
 
-    public function handle(UsageMeter $usage): void
+    public function handle(UsageMeter $usage, OrganizationAi $ai): void
     {
         $repository = $this->repository->fresh('organization');
 
@@ -89,12 +90,12 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
 
         $response = LearningSynthesizer::make()->prompt(
             $this->prompt($signals, $existing),
-            provider: config('reviews.provider'),
-            model: config('learning.synthesis.model'),
+            provider: $ai->provider($repository->organization),
+            model: $repository->organization->modelFor('review'),
             timeout: 180,
         );
 
-        $usage->record($repository->organization, AiFeature::Learning, config('reviews.provider'), config('learning.synthesis.model'), $response->usage, $repository);
+        $usage->record($repository->organization, AiFeature::Learning, $repository->organization->aiProvider(), $repository->organization->modelFor('review'), $response->usage, $repository);
 
         $findingIds = $signals->pluck('review_finding_id')->unique()->values();
 

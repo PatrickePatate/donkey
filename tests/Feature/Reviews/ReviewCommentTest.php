@@ -52,3 +52,12 @@ it('logs what the review is doing', function () {
         ->toContain('Asking ')
         ->toContain('1 finding proposed');
 });
+
+it('links inline comments to findings even when GitHub omits the line', function () {
+    fakeGitHubForReview(['api.github.com/repos/acme/app/pulls/7/reviews/777/comments*' => Http::response([['id' => 9001, 'path' => 'app/Billing.php', 'position' => 13]])]);
+    CodeReviewer::fake([reviewerResponse([sqlInjectionFinding()])]);
+
+    runReview($this->run);
+
+    expect($this->run->fresh()->findings()->sole()->github_comment_id)->toBe(9001);
+});

@@ -231,6 +231,18 @@ class ReviewPublisher
     }
 
     /**
+     * GitHub's review comment listing sometimes omits the line, in which case path and order decide.
+     *
+     * @param  array<string, mixed>  $comment
+     */
+    private function isOnLine(ReviewFinding $finding, array $comment): bool
+    {
+        $line = $comment['line'] ?? $comment['original_line'] ?? null;
+
+        return $line === null || $finding->end_line === $line;
+    }
+
+    /**
      * Store GitHub comment ids on findings, matching on path and line.
      *
      * @param  Collection<int, ReviewFinding>  $findings
@@ -246,7 +258,7 @@ class ReviewPublisher
         foreach ($comments as $comment) {
             $finding = $findings->first(fn (ReviewFinding $finding): bool => $finding->github_comment_id === null
                 && $finding->file_path === ($comment['path'] ?? null)
-                && $finding->end_line === ($comment['line'] ?? $comment['original_line'] ?? null));
+                && $this->isOnLine($finding, $comment));
 
             $finding?->update(['github_comment_id' => $comment['id']]);
         }

@@ -13,6 +13,8 @@ new #[Title('Dependency graph')] class extends Component
 {
     public int $repositoryId;
 
+    public bool $embedded = false;
+
     #[Url(as: 'node')]
     public string $focus = '';
 
@@ -82,20 +84,20 @@ new #[Title('Dependency graph')] class extends Component
 @endphp
 
 <div class="grid gap-6">
-    <div class="flex flex-wrap items-end justify-between gap-4">
+    @unless ($embedded)
         <div class="grid gap-1">
-            <a href="{{ route('repositories.index') }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">Repositories</a>
-            <h1 class="text-2xl font-semibold tracking-tight">{{ $this->repository->full_name }} dependency graph</h1>
-            <p class="text-sm text-muted-foreground">
-                @if ($this->graph)
-                    Built {{ $this->graph->built_at?->diffForHumans() }} from <code>{{ Str::substr($this->graph->commit_sha, 0, 7) }}</code>.
-                @else
-                    No code graph has been built for this repository yet.
-                @endif
-            </p>
+            <a href="{{ route('repositories.show', $this->repository) }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">{{ $this->repository->full_name }}</a>
+            <h1 class="text-2xl font-semibold tracking-tight">Dependency graph</h1>
         </div>
-        <x-ui.button variant="outline" :href="route('repositories.index')" wire:navigate>Back to repositories</x-ui.button>
-    </div>
+    @endunless
+
+    <p class="text-sm text-muted-foreground">
+        @if ($this->graph)
+            Built {{ $this->graph->built_at?->diffForHumans() }} from <code>{{ Str::substr($this->graph->commit_sha, 0, 7) }}</code>.
+        @else
+            No code graph has been built for this repository yet.
+        @endif
+    </p>
 
     @if (! $this->graph)
         <x-ui.alert title="No graph yet">

@@ -31,6 +31,7 @@ Route::middleware('auth')->group(function () {
     Route::middleware('organization')->group(function () {
         Route::livewire('/dashboard', 'pages::dashboard')->name('dashboard');
         Route::livewire('/repositories', 'pages::repositories.index')->name('repositories.index');
+        Route::livewire('/repositories/{repository}', 'pages::repositories.show')->name('repositories.show')->whereNumber('repository');
         Route::livewire('/repositories/{repository}/documentation', 'pages::repositories.documentation')->name('repositories.documentation');
         Route::livewire('/repositories/{repository}/graph', 'pages::repositories.graph')->name('repositories.graph');
         Route::livewire('/pull-requests', 'pages::pull-requests.index')->name('pull-requests.index');

@@ -250,7 +250,7 @@ new #[Title('Repositories')] class extends Component
                                     <td class="p-2">
                                         <div class="flex items-center gap-2">
                                             <x-ui.icon :name="$repository->is_private ? 'lock' : 'globe'" class="text-muted-foreground" />
-                                            <span class="font-medium">{{ $repository->full_name }}</span>
+                                            <a href="{{ route('repositories.show', $repository) }}" wire:navigate class="font-medium hover:underline">{{ $repository->full_name }}</a>
                                         </div>
                                     </td>
                                     <td class="p-2">
@@ -299,7 +299,7 @@ new #[Title('Repositories')] class extends Component
                                                     </span>
                                                 @endif
                                                 @if ($graph->status === \App\Enums\GraphStatus::Ready)
-                                                    <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.graph', $repository)" wire:navigate title="Explore dependency graph">
+                                                    <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.show', ['repository' => $repository, 'tab' => 'graph'])" wire:navigate title="Explore dependency graph">
                                                         <x-ui.icon name="git-branch" />
                                                     </x-ui.button>
                                                 @endif
@@ -323,7 +323,7 @@ new #[Title('Repositories')] class extends Component
                                                 aria-label="Automatic repository documentation"
                                             />
                                             @if (filled($repository->document?->content))
-                                                <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.documentation', $repository)" wire:navigate title="View documentation">
+                                                <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.show', ['repository' => $repository, 'tab' => 'documentation'])" wire:navigate title="View documentation">
                                                     <x-ui.icon name="file-code" />
                                                 </x-ui.button>
                                             @endif

@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'github.webhook' => VerifyGitHubWebhookSignature::class,
         ]);
 
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES') === '*' ? '*' : array_filter(explode(',', (string) env('TRUSTED_PROXIES'))));
+
         $middleware->validateCsrfTokens(except: ['webhooks/github']);
 
         $middleware->redirectGuestsTo(fn () => route('login'));

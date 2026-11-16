@@ -43,9 +43,48 @@ Donkey reviews pull requests the moment they open: it leaves inline comments wit
 - A [GitHub App](#2-create-the-github-app) you own
 - An API key for a model provider supported by [`laravel/ai`](https://laravel.com/docs/ai) (Anthropic by default)
 
-Docker Compose can provide PostgreSQL and Redis, or the whole stack.
+Docker Compose can provide PostgreSQL and Redis, or the whole stack (see [Deploy with Docker](#deploy-with-docker)).
 
 ## Install
+
+Two ways to run Donkey: with Docker (recommended for a server, nothing to install but Docker) or natively for development.
+
+### Deploy with Docker
+
+The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the scheduler, with Bun and `kodus-graph` included) and a Compose file that adds PostgreSQL with pgvector and Redis.
+
+1. **Create the GitHub App** (see [step 2 below](#2-create-the-github-app)) and save its private key as `github-app.pem` next to `compose.prod.yaml`.
+2. **Create the environment file** and fill it in:
+
+   ```bash
+   cp .env.production.example .env.production
+   ```
+
+   Set at least `APP_URL`, `DB_PASSWORD`, `REVERB_APP_KEY`, `REVERB_APP_SECRET` (any random strings), the `GITHUB_*` values and `ANTHROPIC_API_KEY`. Generate `APP_KEY`:
+
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yaml run --rm --no-deps -e APP_KEY=x app php artisan key:generate --show
+   ```
+
+3. **Start it:**
+
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+   ```
+
+   Migrations run automatically before the app starts. The web container listens on `HTTP_PORT` (80 by default) and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Put a TLS-terminating reverse proxy in front of it (Caddy, Traefik, a load balancer) and keep `TRUSTED_PROXIES=*`.
+
+   If Traefik already owns ports 80 and 443 on the host (external network `web`, resolver `lets-encrypt`), add the override and set `DONKEY_HOST` in `.env.production`:
+
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yaml -f compose.traefik.yaml up -d --build
+   ```
+
+4. Open your `APP_URL`, register, create an organization and connect GitHub from **Repositories → Connect GitHub**.
+
+To upgrade, pull the new code and run the same `up -d --build` command; migrations run again. Data lives in the `pgsql-data`, `redis-data` and `storage` volumes. Logs go to `docker compose logs`.
+
+### Install for development
 
 ### 1. Get the code and the services
 
@@ -137,15 +176,6 @@ Reviews also need the scheduler for the nightly jobs (learning proposals, decay 
 ```bash
 php artisan schedule:work
 ```
-
-### Run everything in Docker instead
-
-```bash
-docker compose up -d --build
-docker compose exec app composer setup
-```
-
-The image ships PHP 8.5, Bun and `kodus-graph`; the app is on port `8000`, Reverb on `8080`, and Horizon runs as its own container. Mount your `.env` and the GitHub private key as above.
 
 ## Configuration
 

@@ -66,11 +66,14 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
    docker compose --env-file .env.production -f compose.prod.yaml run --rm --no-deps -e APP_KEY=x app php artisan key:generate --show
    ```
 
-3. **Start it:**
+3. **Start it.** Images are built by GitHub Actions on every push to `main` and published to GHCR (`ghcr.io/<owner>/donkey-app` and `donkey-web`), so the server never builds anything:
 
    ```bash
-   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+   docker login ghcr.io   # only if the packages are private: a token with read:packages
+   ./deploy.sh            # pull the latest images and restart; ./deploy.sh <commit-sha> rolls back
    ```
+
+   To build on the server instead, run `docker compose --env-file .env.production -f compose.prod.yaml up -d --build`.
 
    Migrations run automatically before the app starts. The web container is reached through Traefik and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
 

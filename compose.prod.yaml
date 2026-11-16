@@ -1,5 +1,6 @@
-# Production stack:
-#   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+# Production stack. Images are built by CI (.github/workflows/images.yml) and published to GHCR:
+#   ./deploy.sh [tag]                                                         pull and restart (no build on the server)
+#   docker compose --env-file .env.production -f compose.prod.yaml up -d --build   build locally instead
 # Traefik (external network `web`, entrypoint `websecure`, resolver `lets-encrypt`) terminates TLS and routes DONKEY_HOST to the `web` service.
 # No host port is published: set DONKEY_HOST in .env.production (e.g. donkey.example.com).
 
@@ -7,7 +8,7 @@ x-app: &app
   build:
     context: .
     target: app
-  image: donkey-app:latest
+  image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
   restart: unless-stopped
   env_file: .env.production
   environment:
@@ -31,7 +32,7 @@ services:
     build:
       context: .
       target: web
-    image: donkey-web:latest
+    image: ghcr.io/patrickepatate/donkey-web:${DONKEY_TAG:-latest}
     restart: unless-stopped
     networks: [default, web]
     labels:
@@ -66,7 +67,7 @@ services:
     build:
       context: .
       target: app
-    image: donkey-app:latest
+    image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
     env_file: .env.production
     environment:
       DB_HOST: pgsql

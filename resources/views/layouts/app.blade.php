@@ -3,6 +3,7 @@
     $organization = $user->currentOrganization;
     $navigation = [
         ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => 'layout-dashboard'],
+        ['label' => 'Pull requests', 'route' => 'pull-requests.*', 'href' => 'pull-requests.index', 'icon' => 'git-pull-request'],
         ['label' => 'Repositories', 'route' => 'repositories.index', 'icon' => 'git-branch'],
     ];
     $settings = [
@@ -66,7 +67,7 @@
                         <p class="px-2 text-xs font-medium text-muted-foreground">{{ $group }}</p>
                         @foreach ($items as $item)
                             <a
-                                href="{{ route($item['route']) }}"
+                                href="{{ route($item['href'] ?? $item['route']) }}"
                                 wire:navigate
                                 @class([
                                     'flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent hover:text-accent-foreground',

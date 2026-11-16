@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Services\GitHub;
+
+use App\Models\PullRequest;
+use App\Models\Repository;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
+
+/**
+ * Pull request operations performed as the GitHub App installation.
+ */
+class PullRequestClient
+{
+    public function __construct(private GitHubApp $github) {}
+
+    /**
+     * Files changed by the pull request, with their unified patches.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function files(PullRequest $pullRequest): array
+    {
+        $files = [];
+        $page = 1;
+
+        do {
+            $batch = $this->request($pullRequest)
+                ->get($this->repoPath($pullRequest)."/pulls/{$pullRequest->number}/files", ['per_page' => 100, 'page' => $page])
+                ->throw()
+                ->json();
+
+            $files = [...$files, ...$batch];
+            $page++;
+        } while (count($batch) === 100 && $page <= 30);
+
+        return $files;
+    }
+
+    /**
+     * Compare two commits. Status is "ahead" when head simply extends base, "diverged" after a force-push.
+     *
+     * @return array{status: string, files: list<array<string, mixed>>}
+     */
+    public function compare(PullRequest $pullRequest, string $base, string $head): array
+    {
+        $response = $this->request($pullRequest)
+            ->get($this->repoPath($pullRequest)."/compare/{$base}...{$head}")
+            ->throw()
+            ->json();
+
+        return [
+            'status' => (string) ($response['status'] ?? 'diverged'),
+            'files' => $response['files'] ?? [],
+        ];
+    }
+
+    /**
+     * Raw content of a file at a ref, or null when it does not exist.
+     */
+    public function fileContent(PullRequest $pullRequest, string $path, string $ref): ?string
+    {
+        $response = $this->request($pullRequest)
+            ->accept('application/vnd.github.raw+json')
+            ->get($this->repoPath($pullRequest).'/contents/'.implode('/', array_map('rawurlencode', explode('/', $path))), ['ref' => $ref]);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        return $response->throw()->body();
+    }
+
+    /**
+     * Create a review with inline comments.
+     *
+     * @param  list<array{path: string, line: int, start_line?: int, side: string, start_side?: string, body: string}>  $comments
+     * @return array<string, mixed>
+     */
+    public function createReview(PullRequest $pullRequest, string $commitId, string $body, array $comments): array
+    {
+        return $this->request($pullRequest)
+            ->post($this->repoPath($pullRequest)."/pulls/{$pullRequest->number}/reviews", [
+                'commit_id' => $commitId,
+                'body' => $body,
+                'event' => 'COMMENT',
+                'comments' => $comments,
+            ])
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Inline comments created by a review, in the order GitHub stored them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function reviewComments(PullRequest $pullRequest, int $reviewId): array
+    {
+        return $this->request($pullRequest)
+            ->get($this->repoPath($pullRequest)."/pulls/{$pullRequest->number}/reviews/{$reviewId}/comments", ['per_page' => 100])
+            ->throw()
+            ->json();
+    }
+
+    public function createCheckRun(PullRequest $pullRequest, string $name, string $headSha, string $detailsUrl): ?int
+    {
+        try {
+            return $this->request($pullRequest)
+                ->post($this->repoPath($pullRequest).'/check-runs', [
+                    'name' => $name,
+                    'head_sha' => $headSha,
+                    'status' => 'in_progress',
+                    'details_url' => $detailsUrl,
+                    'started_at' => now()->toIso8601String(),
+                ])
+                ->throw()
+                ->json('id');
+        } catch (RequestException) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  'success'|'neutral'|'failure'|'cancelled'|'skipped'  $conclusion
+     */
+    public function completeCheckRun(PullRequest $pullRequest, int $checkRunId, string $conclusion, string $title, string $summary): void
+    {
+        $this->request($pullRequest)
+            ->patch($this->repoPath($pullRequest)."/check-runs/{$checkRunId}", [
+                'status' => 'completed',
+                'conclusion' => $conclusion,
+                'completed_at' => now()->toIso8601String(),
+                'output' => ['title' => $title, 'summary' => $summary],
+            ]);
+    }
+
+    public function reactToComment(PullRequest $pullRequest, int $commentId, string $content): void
+    {
+        $this->request($pullRequest)
+            ->post($this->repoPath($pullRequest)."/issues/comments/{$commentId}/reactions", ['content' => $content]);
+    }
+
+    public function createIssueComment(PullRequest $pullRequest, string $body): void
+    {
+        $this->request($pullRequest)
+            ->post($this->repoPath($pullRequest)."/issues/{$pullRequest->number}/comments", ['body' => $body])
+            ->throw();
+    }
+
+    /**
+     * Fetch a pull request by number, e.g. when a comment arrives before we have seen the PR.
+     *
+     * @return array<string, mixed>
+     */
+    public function get(Repository $repository, int $number): array
+    {
+        return $this->github->asInstallation($repository->installation->installation_id)
+            ->get("/repos/{$repository->full_name}/pulls/{$number}")
+            ->throw()
+            ->json();
+    }
+
+    private function request(PullRequest $pullRequest): PendingRequest
+    {
+        return $this->github->asInstallation($pullRequest->repository->installation->installation_id);
+    }
+
+    private function repoPath(PullRequest $pullRequest): string
+    {
+        return '/repos/'.$pullRequest->repository->full_name;
+    }
+}

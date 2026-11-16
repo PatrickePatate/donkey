@@ -28,6 +28,8 @@ Route::middleware('auth')->group(function () {
     Route::middleware('organization')->group(function () {
         Route::livewire('/dashboard', 'pages::dashboard')->name('dashboard');
         Route::livewire('/repositories', 'pages::repositories.index')->name('repositories.index');
+        Route::livewire('/pull-requests', 'pages::pull-requests.index')->name('pull-requests.index');
+        Route::livewire('/pull-requests/{pullRequest}', 'pages::pull-requests.show')->name('pull-requests.show');
         Route::livewire('/settings/organization', 'pages::settings.organization')->name('settings.organization');
         Route::livewire('/settings/members', 'pages::settings.members')->name('settings.members');
 

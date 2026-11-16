@@ -7,6 +7,8 @@ use App\Events\RepositoriesSynced;
 use App\Events\WebhookEventProcessed;
 use App\Models\GithubInstallation;
 use App\Models\WebhookEvent;
+use App\Services\GitHub\Webhooks\HandleIssueCommentEvent;
+use App\Services\GitHub\Webhooks\HandlePullRequestEvent;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -40,6 +42,8 @@ class ProcessGitHubWebhook implements ShouldQueue
             'ping' => WebhookEventStatus::Processed,
             'installation' => $this->handleInstallation($installation),
             'installation_repositories' => $this->handleInstallationRepositories($installation),
+            'pull_request' => app(HandlePullRequestEvent::class)->handle($installation, $this->webhookEvent),
+            'issue_comment' => app(HandleIssueCommentEvent::class)->handle($installation, $this->webhookEvent),
             default => WebhookEventStatus::Ignored,
         };
 

@@ -1,0 +1,328 @@
+<?php
+
+use App\Actions\StartReview;
+use App\Enums\FindingStatus;
+use App\Enums\ReviewRunStatus;
+use App\Enums\ReviewStage;
+use App\Enums\ReviewTrigger;
+use App\Models\PullRequest;
+use App\Models\ReviewFinding;
+use App\Models\ReviewRun;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
+use Livewire\Component;
+
+new class extends Component
+{
+    #[Locked]
+    public PullRequest $pullRequest;
+
+    #[Url(as: 'run')]
+    public ?int $selectedRunId = null;
+
+    #[Url(except: 'published')]
+    public string $findingStatus = 'published';
+
+    public function mount(PullRequest $pullRequest): void
+    {
+        Gate::authorize('view', $pullRequest);
+
+        $this->pullRequest = $pullRequest->load('repository.organization');
+    }
+
+    public function rendering($view): void
+    {
+        $view->title("#{$this->pullRequest->number} {$this->pullRequest->title}");
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getListeners(): array
+    {
+        return [
+            "echo-private:organizations.{$this->pullRequest->repository->organization_id},.review.updated" => 'onReviewUpdated',
+        ];
+    }
+
+    /**
+     * @param  array{pull_request_id: int}  $payload
+     */
+    public function onReviewUpdated(array $payload): void
+    {
+        if ($payload['pull_request_id'] !== $this->pullRequest->id) {
+            $this->skipRender();
+
+            return;
+        }
+
+        $this->pullRequest->refresh();
+        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+    }
+
+    /**
+     * @return Collection<int, ReviewRun>
+     */
+    #[Computed]
+    public function runs(): Collection
+    {
+        return $this->pullRequest->reviewRuns()->latest('id')->limit(20)->get();
+    }
+
+    #[Computed]
+    public function selectedRun(): ?ReviewRun
+    {
+        return $this->runs->firstWhere('id', $this->selectedRunId) ?? $this->runs->first();
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    #[Computed]
+    public function findingCounts(): array
+    {
+        if ($this->selectedRun === null) {
+            return [];
+        }
+
+        return $this->selectedRun->findings()
+            ->toBase()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+    }
+
+    /**
+     * @return Collection<int, ReviewFinding>
+     */
+    #[Computed]
+    public function findings(): Collection
+    {
+        if ($this->selectedRun === null) {
+            return new Collection;
+        }
+
+        return $this->selectedRun->findings()
+            ->when($this->findingStatus !== 'all', fn ($query) => $query->where('status', $this->findingStatus))
+            ->orderByDesc('risk_score')
+            ->get();
+    }
+
+    public function selectRun(int $runId): void
+    {
+        $this->selectedRunId = $runId;
+        unset($this->selectedRun, $this->findings, $this->findingCounts);
+    }
+
+    public function startReview(StartReview $startReview): void
+    {
+        Gate::authorize('review', $this->pullRequest);
+
+        if (! $this->pullRequest->isOpen()) {
+            $this->dispatch('toast', message: 'Only open pull requests can be reviewed.', variant: 'destructive');
+
+            return;
+        }
+
+        $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, full: true, source: (string) Str::uuid());
+
+        $this->selectedRunId = $run?->id;
+        unset($this->runs, $this->selectedRun, $this->findings, $this->findingCounts);
+
+        $this->dispatch('toast', message: 'Review queued.', variant: 'success');
+    }
+
+    public function markdown(string $text): string
+    {
+        return Str::markdown($text, ['html_input' => 'strip', 'allow_unsafe_links' => false]);
+    }
+};
+?>
+
+<div class="grid gap-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="grid min-w-0 gap-1">
+            <a href="{{ route('pull-requests.index') }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">← Pull requests</a>
+            <h1 class="text-2xl font-semibold tracking-tight">{{ $pullRequest->title }} <span class="font-normal text-muted-foreground">#{{ $pullRequest->number }}</span></h1>
+            <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span>{{ $pullRequest->repository->full_name }}</span>
+                <span>·</span>
+                <span>{{ $pullRequest->author_login }}</span>
+                <span>·</span>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ $pullRequest->head_ref }} → {{ $pullRequest->base_ref }}</code>
+                <x-ui.badge :variant="$pullRequest->isOpen() ? 'success' : 'secondary'">{{ ucfirst($pullRequest->state) }}</x-ui.badge>
+                @if ($pullRequest->is_draft)
+                    <x-ui.badge variant="outline">Draft</x-ui.badge>
+                @endif
+            </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <x-ui.button variant="outline" :href="$pullRequest->html_url" target="_blank" rel="noopener">
+                <x-ui.icon name="external-link" /> GitHub
+            </x-ui.button>
+            @can('review', $pullRequest)
+                <x-ui.button wire:click="startReview" :disabled="! $pullRequest->isOpen()">
+                    <x-ui.icon name="play" /> Review now
+                </x-ui.button>
+            @endcan
+        </div>
+    </div>
+
+    @if ($this->selectedRun === null)
+        <x-ui.card>
+            <div class="flex flex-col items-center gap-2 py-10 text-center">
+                <x-ui.icon name="shield" class="size-8 text-muted-foreground" />
+                <p class="font-medium">Not reviewed yet</p>
+                <p class="max-w-sm text-sm text-muted-foreground">
+                    Reviews start automatically on new commits when auto-review is on, or when someone comments
+                    <code>{{ '@'.$pullRequest->repository->organization->bot_handle }} review</code>.
+                </p>
+            </div>
+        </x-ui.card>
+    @else
+        @php($run = $this->selectedRun)
+        <div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+            <div class="grid min-w-0 content-start gap-6">
+                <x-ui.card>
+                    <x-slot:title>
+                        Review #{{ $run->id }}
+                    </x-slot:title>
+                    <div class="grid gap-6">
+                        <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            <x-ui.badge :variant="$run->status->badgeVariant()">{{ $run->status->label() }}</x-ui.badge>
+                            <span>{{ $run->trigger->label() }}{{ $run->triggered_by ? ' by '.$run->triggered_by : '' }}</span>
+                            <span>·</span>
+                            <code class="text-xs">{{ Str::substr($run->head_sha, 0, 7) }}</code>
+                            @if ($run->is_full)
+                                <x-ui.badge variant="outline">Full review</x-ui.badge>
+                            @endif
+                        </div>
+
+                        @if (in_array($run->status, [ReviewRunStatus::Queued, ReviewRunStatus::Running, ReviewRunStatus::Completed, ReviewRunStatus::Failed], true))
+                            <x-ui.stepper
+                                :steps="ReviewStage::steps()"
+                                :current="$run->stage?->value"
+                                :state="match ($run->status) {
+                                    ReviewRunStatus::Queued => 'pending',
+                                    ReviewRunStatus::Completed => 'complete',
+                                    ReviewRunStatus::Failed => 'error',
+                                    default => 'active',
+                                }"
+                            />
+                        @endif
+
+                        @if ($run->status === ReviewRunStatus::Failed && $run->error)
+                            <x-ui.alert variant="destructive" title="Review failed">{{ Str::limit($run->error, 300) }}</x-ui.alert>
+                        @elseif ($run->summary)
+                            <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">
+                                {!! $this->markdown($run->summary) !!}
+                            </div>
+                        @endif
+                    </div>
+                </x-ui.card>
+
+                @if ($run->status === ReviewRunStatus::Completed || $this->findingCounts !== [])
+                    <x-ui.card title="Findings">
+                        <div class="grid gap-4">
+                            <div class="inline-flex w-fit flex-wrap rounded-md border p-0.5 text-sm">
+                                @foreach ([...array_map(fn ($status) => $status->value, FindingStatus::cases()), 'all'] as $status)
+                                    @php($count = $status === 'all' ? array_sum($this->findingCounts) : ($this->findingCounts[$status] ?? 0))
+                                    <button
+                                        type="button"
+                                        wire:click="$set('findingStatus', '{{ $status }}')"
+                                        @class([
+                                            'rounded px-3 py-1',
+                                            'bg-secondary font-medium' => $findingStatus === $status,
+                                            'text-muted-foreground hover:text-foreground' => $findingStatus !== $status,
+                                        ])
+                                    >{{ ucfirst($status) }} <span class="text-muted-foreground tabular-nums">{{ $count }}</span></button>
+                                @endforeach
+                            </div>
+
+                            @forelse ($this->findings as $finding)
+                                <article wire:key="finding-{{ $finding->id }}" class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 rounded-lg border p-4">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <x-ui.badge :variant="$finding->severity->badgeVariant()">{{ $finding->severity->label() }}</x-ui.badge>
+                                        <x-ui.badge variant="outline">{{ $finding->category->label() }}</x-ui.badge>
+                                        @if ($findingStatus === 'all')
+                                            <x-ui.badge :variant="$finding->status->badgeVariant()">{{ $finding->status->label() }}</x-ui.badge>
+                                        @endif
+                                        <span class="ml-auto text-xs text-muted-foreground tabular-nums">Risk {{ $finding->risk_score }} · {{ $finding->confidence }}% confident</span>
+                                    </div>
+                                    <h3 class="font-medium">{{ $finding->title }}</h3>
+                                    <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        <x-ui.icon name="file-code" class="size-3.5" />
+                                        <code>{{ $finding->file_path }}</code> {{ $finding->lineLabel() }}
+                                    </p>
+                                    <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">{!! $this->markdown($finding->body) !!}</div>
+                                    @if ($finding->suggestion)
+                                        <div class="grid gap-1">
+                                            <span class="text-xs font-medium text-muted-foreground">Suggested change</span>
+                                            <pre class="overflow-x-auto rounded-md bg-muted p-3 text-xs"><code>{{ $finding->suggestion }}</code></pre>
+                                        </div>
+                                    @endif
+                                </article>
+                            @empty
+                                <p class="py-6 text-center text-sm text-muted-foreground">No {{ $findingStatus === 'all' ? '' : $findingStatus.' ' }}findings in this review.</p>
+                            @endforelse
+                        </div>
+                    </x-ui.card>
+                @endif
+            </div>
+
+            <div class="grid content-start gap-6">
+                <x-ui.card title="Details">
+                    <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                        <dt class="text-muted-foreground">Risk score</dt>
+                        <dd class="text-right font-medium tabular-nums">{{ $run->risk_score ?? '—' }}</dd>
+                        <dt class="text-muted-foreground">Threshold</dt>
+                        <dd class="text-right tabular-nums">{{ $run->risk_threshold ?? '—' }}</dd>
+                        <dt class="text-muted-foreground">Files</dt>
+                        <dd class="text-right tabular-nums">{{ $run->files_reviewed }}</dd>
+                        <dt class="text-muted-foreground">Tokens</dt>
+                        <dd class="text-right tabular-nums">{{ number_format($run->tokens_input + $run->tokens_output) }}</dd>
+                        <dt class="text-muted-foreground">Duration</dt>
+                        <dd class="text-right tabular-nums">{{ $run->durationInSeconds() !== null ? $run->durationInSeconds().'s' : '—' }}</dd>
+                        <dt class="col-span-2 text-muted-foreground">Model</dt>
+                        <dd class="col-span-2 truncate text-xs">{{ $run->model ?? '—' }}</dd>
+                    </dl>
+                </x-ui.card>
+
+                <x-ui.card title="History">
+                    <ul class="-mx-2 grid gap-1">
+                        @foreach ($this->runs as $item)
+                            <li wire:key="run-{{ $item->id }}">
+                                <button
+                                    type="button"
+                                    wire:click="selectRun({{ $item->id }})"
+                                    @class([
+                                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent',
+                                        'bg-accent' => $item->is($run),
+                                    ])
+                                >
+                                    <span @class([
+                                        'size-2 shrink-0 rounded-full',
+                                        'bg-success' => $item->status === ReviewRunStatus::Completed,
+                                        'bg-destructive' => $item->status === ReviewRunStatus::Failed,
+                                        'animate-pulse bg-primary' => in_array($item->status, [ReviewRunStatus::Queued, ReviewRunStatus::Running], true),
+                                        'bg-muted-foreground' => in_array($item->status, [ReviewRunStatus::Skipped, ReviewRunStatus::Superseded], true),
+                                    ])></span>
+                                    <code class="text-xs">{{ Str::substr($item->head_sha, 0, 7) }}</code>
+                                    <span class="flex-1 truncate text-muted-foreground">{{ $item->trigger->label() }}</span>
+                                    <span class="text-xs text-muted-foreground">{{ $item->created_at->diffForHumans(short: true) }}</span>
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                </x-ui.card>
+            </div>
+        </div>
+    @endif
+</div>

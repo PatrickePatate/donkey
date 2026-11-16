@@ -22,8 +22,8 @@ x-app: &app
 services:
   app:
     <<: *app
-    working_dir: /var/www/html/public
-    command: php -S 0.0.0.0:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+    # artisan serve drops most environment variables (e.g. DB_HOST), so run the built-in server directly from public/.
+    command: sh -c "cd public && exec php -S 0.0.0.0:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
     ports:
       - "${APP_PORT:-8000}:8000"
 

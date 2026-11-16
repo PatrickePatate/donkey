@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['organization_id', 'github_installation_id', 'github_id', 'full_name', 'default_branch', 'is_private', 'auto_review_enabled', 'risk_threshold'])]
 class Repository extends Model
@@ -38,6 +39,14 @@ class Repository extends Model
     public function installation(): BelongsTo
     {
         return $this->belongsTo(GithubInstallation::class, 'github_installation_id');
+    }
+
+    /**
+     * @return HasMany<PullRequest, $this>
+     */
+    public function pullRequests(): HasMany
+    {
+        return $this->hasMany(PullRequest::class);
     }
 
     /**

@@ -1,0 +1,11 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "donkey-app",
+            "runtimeExecutable": "php8.5",
+            "runtimeArgs": ["artisan", "serve", "--host=127.0.0.1", "--port=8000"],
+            "port": 8000
+        }
+    ]
+}

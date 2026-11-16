@@ -2,10 +2,13 @@
 
 namespace App\Services\GitHub;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 /**
  * Client for the GitHub App: app-level (JWT) and installation-level requests.
@@ -131,7 +134,8 @@ class GitHubApp
             ->acceptJson()
             ->withHeaders(['X-GitHub-Api-Version' => '2022-11-28'])
             ->timeout(20)
-            ->retry(2, 500, throw: false);
+            ->retry(2, 500, fn (Throwable $exception): bool => $exception instanceof ConnectionException
+                || ($exception instanceof RequestException && ($exception->response->serverError() || $exception->response->status() === 429)), throw: false);
     }
 
     private function privateKey(): string

@@ -263,10 +263,10 @@ class ReviewPullRequest implements ShouldQueue
         $log = fn (string $message) => $run->log($message);
 
         if ($run->agent !== null) {
-            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge, $log);
+            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge, $log, $run);
         }
 
-        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge, log: $log);
+        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge, log: $log, run: $run);
 
         $agents = ReviewAgent::availableFor($pullRequest->repository)->where('run_on_auto_review', true);
 
@@ -278,7 +278,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             try {
-                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge, $log));
+                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge, $log, $run));
             } catch (Throwable $exception) {
                 // One failing agent must not sink the whole review.
                 report($exception);

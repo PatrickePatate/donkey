@@ -32,12 +32,17 @@ class ReviewContextBuilder
 
         $files = [];
         $skipped = [];
+        $removed = [];
 
         foreach ($prFiles as $file) {
             $path = (string) $file['filename'];
 
             if ($changedSinceLastReview !== null && ! in_array($path, $changedSinceLastReview, true)) {
                 continue;
+            }
+
+            if (($file['status'] ?? null) === 'removed' && ! $this->isIgnored($path)) {
+                $removed[] = $path;
             }
 
             if (
@@ -63,6 +68,7 @@ class ReviewContextBuilder
             instructions: $files === [] ? [] : $this->instructions($run, array_keys($files)),
             skippedFiles: $skipped,
             documentation: $this->documentation($pullRequest->repository),
+            removedFiles: $removed,
         );
     }
 

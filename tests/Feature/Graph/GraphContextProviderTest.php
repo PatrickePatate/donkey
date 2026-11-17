@@ -203,6 +203,15 @@ it('reports unavailable when kodus-graph is not installed', function () {
     Process::assertDidntRun(fn (PendingProcess $process) => $process->command[0] === 'git');
 });
 
+it('reports unavailable when the binary exits successfully without printing a version', function () {
+    Process::fake(['*' => Process::result('')]);
+
+    $result = app(GraphContextProvider::class)->forReview($this->run, $this->context);
+
+    expect($result->status)->toBe(RunGraphStatus::Unavailable);
+    Process::assertDidntRun(fn (PendingProcess $process) => $process->command[0] === 'git');
+});
+
 it('degrades gracefully and records a failed graph when parsing fails', function () {
     Process::fake(function (PendingProcess $process) {
         if ($process->command[0] === 'kodus-graph' && $process->command[1] === 'parse') {

@@ -3,6 +3,7 @@
 namespace App\Services\Graph;
 
 use App\Enums\RunGraphStatus;
+use App\Models\RepositoryGraph;
 use App\Models\ReviewRun;
 use App\Services\Review\ReviewContext;
 use Illuminate\Support\Facades\File;
@@ -19,6 +20,7 @@ class GraphContextProvider
         private KodusGraph $kodusGraph,
         private RepositoryWorkspace $workspace,
         private GraphBuilder $builder,
+        private GraphExplorer $explorer,
     ) {}
 
     public function forReview(ReviewRun $run, ReviewContext $context): GraphContextResult
@@ -41,7 +43,8 @@ class GraphContextProvider
                 $graph = $this->builder->ensure($workspace, $repository, $pullRequest->base_sha);
                 $directory = $workspace->checkout($repository, $run->head_sha);
 
-                $files = array_keys($context->files);
+                // Deleted files are absent from the head checkout, which is how kodus-graph sees their symbols as removed.
+                $files = [...array_keys($context->files), ...$context->removedFiles];
                 $diffPath = $scratch.'/pr.diff';
                 File::put($diffPath, $this->unifiedDiff($context));
 
@@ -51,10 +54,11 @@ class GraphContextProvider
                 $jsonPath = $scratch.'/context.json';
                 $this->kodusGraph->context($directory, (string) $graph->path, $files, $diffPath, 'json', $jsonPath);
 
-                return new GraphContextResult(RunGraphStatus::Ready, $this->toContext(
-                    Str::limit($this->withoutNoise((string) File::get($promptPath)), (int) config('graph.max_prompt_characters'), "\n…(truncated)"),
-                    $jsonPath,
-                ));
+                return new GraphContextResult(
+                    RunGraphStatus::Ready,
+                    $this->toContext($this->withoutNoise((string) File::get($promptPath)), $jsonPath, $graph, $context),
+                    baseGraph: $graph,
+                );
             });
         } catch (Throwable $exception) {
             report($exception);
@@ -73,7 +77,7 @@ class GraphContextProvider
         return trim((string) preg_replace(['#<!--.*?-->\s*#s', '#<Imports\b(?:[^>]*/>|.*?</Imports>)\s*#s'], '', $xml));
     }
 
-    private function toContext(string $prompt, string $jsonPath): GraphContext
+    private function toContext(string $xml, string $jsonPath, RepositoryGraph $graph, ReviewContext $context): GraphContext
     {
         $analysis = [];
 
@@ -83,9 +87,10 @@ class GraphContextProvider
         }
 
         $risk = $analysis['risk'] ?? [];
+        $removed = $this->removedSymbols($graph, (array) ($analysis['structural_diff']['nodes']['removed'] ?? []), $context);
 
         return new GraphContext(
-            prompt: $prompt,
+            prompt: Str::limit(trim($removed."\n\n".$xml), (int) config('graph.max_prompt_characters'), "\n…(truncated)"),
             riskLevel: isset($risk['level']) ? strtoupper((string) $risk['level']) : null,
             riskScore: isset($risk['score']) ? (int) round(((float) $risk['score']) * 100) : null,
             changedFunctions: array_values(array_map(
@@ -97,6 +102,46 @@ class GraphContextProvider
             impactedFiles: (int) ($analysis['blast_radius']['total_files'] ?? 0),
             affectedFlows: count($analysis['affected_flows'] ?? []),
         );
+    }
+
+    /**
+     * Symbols this change deletes that base-branch code still uses: kodus-graph detects them but its XML leaves them out.
+     *
+     * @param  array<int, mixed>  $removed  structural_diff.nodes.removed from kodus-graph's JSON analysis.
+     */
+    private function removedSymbols(RepositoryGraph $graph, array $removed, ReviewContext $context): string
+    {
+        $entries = [];
+
+        foreach ($removed as $node) {
+            $id = is_array($node) ? (string) ($node['qualified_name'] ?? '') : '';
+            $users = array_filter(
+                $id === '' ? [] : ($this->explorer->neighbourhood($graph, $id, 10)['callers'] ?? []),
+                fn (array $caller): bool => ! in_array($caller['node']['file'], $context->removedFiles, true),
+            );
+
+            if ($users === []) {
+                continue;
+            }
+
+            $lines = array_map(fn (array $caller): string => sprintf(
+                '    <StillUsedBy name="%s" file="%s" line="%d" via="%s"%s />',
+                e(Str::after($caller['node']['id'], '::')),
+                e($caller['node']['file']),
+                $caller['node']['line'],
+                e($caller['kind']),
+                isset($context->files[$caller['node']['file']]) ? ' fileChangedInPullRequest="true"' : '',
+            ), $users);
+
+            $entries[] = sprintf('  <Removed name="%s" file="%s">', e(Str::after($id, '::')), e((string) ($node['file_path'] ?? '')))
+                ."\n".implode("\n", $lines)."\n  </Removed>";
+
+            if (count($entries) >= 15) {
+                break;
+            }
+        }
+
+        return $entries === [] ? '' : "<RemovedSymbols>\n".implode("\n", $entries)."\n</RemovedSymbols>";
     }
 
     /**

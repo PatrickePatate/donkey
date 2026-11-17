@@ -3,6 +3,7 @@
 use App\Ai\Agents\CodeReviewer;
 use App\Enums\FindingStatus;
 use App\Enums\ReviewRunStatus;
+use App\Models\AiUsage;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use Illuminate\Http\Client\Request;
@@ -41,7 +42,8 @@ it('publishes findings above the threshold as inline comments with suggestions',
         ->github_comment_id->toBe(9001)
         ->and($findings['Unused $amount parameter'])
         ->status->toBe(FindingStatus::Suppressed)
-        ->and($this->pullRequest->fresh()->last_reviewed_sha)->toBe(str_repeat('a', 40));
+        ->and($this->pullRequest->fresh()->last_reviewed_sha)->toBe(str_repeat('a', 40))
+        ->and(AiUsage::pluck('review_run_id')->unique()->all())->toBe([$run->id]);
 
     CodeReviewer::assertPrompted(fn ($prompt) => $prompt->contains('Always use parameter binding for SQL.')
         && $prompt->contains('    7 +         return DB::select')

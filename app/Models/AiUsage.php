@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $organization_id
  * @property ?int $repository_id
  * @property ?int $pull_request_id
+ * @property ?int $review_run_id
  * @property AiFeature $feature
  * @property ?string $provider
  * @property string $model
@@ -30,7 +31,7 @@ use Illuminate\Support\Carbon;
  * @property-read ?Repository $repository
  * @property-read ?PullRequest $pullRequest
  */
-#[Fillable(['organization_id', 'repository_id', 'pull_request_id', 'feature', 'provider', 'model', 'input_tokens', 'output_tokens', 'cost_micros', 'created_at'])]
+#[Fillable(['organization_id', 'repository_id', 'pull_request_id', 'review_run_id', 'feature', 'provider', 'model', 'input_tokens', 'output_tokens', 'cost_micros', 'created_at'])]
 class AiUsage extends Model
 {
     /** @use HasFactory<AiUsageFactory> */

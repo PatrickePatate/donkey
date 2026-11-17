@@ -60,6 +60,7 @@ class FindingVerifierService
             $model,
             $response->usage,
             pullRequest: $run->pullRequest,
+            reviewRun: $run,
         );
 
         $verdicts = [];

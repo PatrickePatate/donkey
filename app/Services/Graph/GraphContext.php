@@ -21,6 +21,21 @@ final class GraphContext
         public readonly int $affectedFlows,
     ) {}
 
+    /**
+     * The prompt block restricted to the changed functions of these files (a diff chunk or an agent's scope);
+     * summary, focus, removed symbols and review-together sections stay whole.
+     *
+     * @param  list<string>  $paths
+     */
+    public function promptFor(array $paths): string
+    {
+        return (string) preg_replace_callback(
+            '#\s*<ChangedFunction\b([^>]*?)(?:/>|>.*?</ChangedFunction>)#s',
+            fn (array $match): string => preg_match('/\bfile="([^"]*)"/', $match[1], $file) === 1 && in_array(html_entity_decode($file[1], ENT_QUOTES | ENT_XML1), $paths, true) ? $match[0] : '',
+            $this->prompt,
+        );
+    }
+
     public function functionAt(string $path, int $line): ?ChangedFunction
     {
         $matches = array_filter($this->changedFunctions, fn (ChangedFunction $function): bool => $function->contains($path, $line));

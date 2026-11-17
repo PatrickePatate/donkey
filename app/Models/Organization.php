@@ -30,11 +30,11 @@ use Illuminate\Support\Facades\Storage;
  * @property ?string $eco_model
  * @property ?string $verifier_model
  * @property ?string $conversation_model
- * @property ?string $ai_effort
+ * @property ?array<string, string> $ai_efforts
  * @property ?string $avatar_path
  */
 #[Hidden(['ai_api_key'])]
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_enabled', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model', 'ai_effort', 'avatar_path'])]
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_enabled', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model', 'ai_efforts', 'avatar_path'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -48,6 +48,7 @@ class Organization extends Model
             'eco_mode' => 'boolean',
             'monthly_budget_cents' => 'integer',
             'auto_join_domains' => 'array',
+            'ai_efforts' => 'array',
             'auto_join_enabled' => 'boolean',
             'auto_join_role' => OrganizationRole::class,
             'ai_api_key' => 'encrypted',
@@ -58,6 +59,11 @@ class Organization extends Model
      * Reasoning effort levels the settings accept; empty means the provider default.
      */
     public const AI_EFFORTS = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High'];
+
+    /**
+     * Uses that can each override the default reasoning effort.
+     */
+    public const AI_EFFORT_ROLES = ['review' => 'Reviews', 'eco' => 'Eco-mode', 'verifier' => 'Verifier', 'conversation' => 'Conversation', 'learning' => 'Learning proposals', 'documentation' => 'Repository docs'];
 
     public function initials(): string
     {
@@ -87,6 +93,14 @@ class Organization extends Model
         $own = $role === 'review' ? $this->review_model : $this->{"{$role}_model"};
 
         return (string) ($own ?: $this->review_model ?: config($role === 'review' ? 'reviews.model' : "reviews.{$role}.model"));
+    }
+
+    /**
+     * The reasoning effort for a use (see AI_EFFORT_ROLES), or null for the provider default.
+     */
+    public function effortFor(string $role): ?string
+    {
+        return ($this->ai_efforts[$role] ?? null) ?: null;
     }
 
     /**

@@ -118,13 +118,18 @@ it('skips reviews until the organization has an API key', function () {
     CodeReviewer::assertNeverPrompted();
 });
 
-it('saves the reasoning effort and sends it in each provider format', function () {
+it('saves a reasoning effort per use and sends it in each provider format', function () {
     [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
 
-    Livewire::actingAs($owner)->test('pages::settings.organization')->set('aiEffort', 'extreme')->call('saveAi')->assertHasErrors('aiEffort');
-    Livewire::actingAs($owner)->test('pages::settings.organization')->set('aiEffort', 'high')->call('saveAi')->assertHasNoErrors();
+    Livewire::actingAs($owner)->test('pages::settings.organization')->set('aiEfforts.verifier', 'extreme')->call('saveAi')->assertHasErrors('aiEfforts.verifier');
+    Livewire::actingAs($owner)->test('pages::settings.organization')->set('aiEfforts.verifier', 'high')->call('saveAi')->assertHasNoErrors();
 
-    $reviewer = CodeReviewer::make()->withEffort($organization->fresh()->ai_effort);
+    $organization->refresh();
+
+    expect($organization->ai_efforts)->toBe(['verifier' => 'high'])
+        ->and($organization->effortFor('review'))->toBeNull();
+
+    $reviewer = CodeReviewer::make()->withEffort($organization->effortFor('verifier'));
 
     expect($reviewer->providerOptions('anthropic'))->toBe(['output_config' => ['effort' => 'high']])
         ->and($reviewer->providerOptions('openai'))->toBe(['reasoning' => ['effort' => 'high']])

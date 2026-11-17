@@ -21,7 +21,9 @@ use Closure;
  */
 class ReviewAnalyzer
 {
-    public function __construct(private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai) {}
+    public function __construct(private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai)
+    {
+    }
 
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
@@ -45,7 +47,7 @@ class ReviewAnalyzer
         foreach ($chunks as $number => $chunk) {
             $model = $this->models->reviewModel($routingOrganization, $agent, $chunk, $graph);
             $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
-            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->ai_effort)->withCodeTools($explorer?->tools() ?? [])->prompt(
+            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->effortFor($agent === null && $this->models->isEco($routingOrganization, $model, 'review') ? 'eco' : 'review'))->withCodeTools($explorer?->tools() ?? [])->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: $this->ai->provider($aiOrganization),
                 model: $model,
@@ -75,7 +77,7 @@ class ReviewAnalyzer
             foreach ($response['findings'] ?? [] as $raw) {
                 $finding = $this->validate($context, is_array($raw) ? $raw : []);
 
-                if ($finding === null || ($agent !== null && ! $this->isWithinAgentScope($agent, $finding))) {
+                if ($finding === null || ($agent !== null && !$this->isWithinAgentScope($agent, $finding))) {
                     $discarded++;
 
                     continue;
@@ -122,8 +124,8 @@ class ReviewAnalyzer
         $startLine = (int) ($raw['start_line'] ?? 0);
         $endLine = max($startLine, (int) ($raw['end_line'] ?? $startLine));
 
-        if (! $file->canCommentRange($startLine, $endLine)) {
-            if (! $file->canComment($startLine)) {
+        if (!$file->canCommentRange($startLine, $endLine)) {
+            if (!$file->canComment($startLine)) {
                 return null;
             }
 
@@ -183,7 +185,7 @@ class ReviewAnalyzer
             ]);
         }
 
-        if ($knowledge !== null && ! $knowledge->isEmpty()) {
+        if ($knowledge !== null && !$knowledge->isEmpty()) {
             $sections[] = $knowledge->promptSection();
         }
 

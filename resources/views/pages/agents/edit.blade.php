@@ -140,7 +140,7 @@ new class extends Component
     public function testRuns(): Collection
     {
         if ($this->agentId === null) {
-            return new Collection;
+            return new Collection();
         }
 
         return ReviewRun::query()
@@ -353,12 +353,14 @@ new class extends Component
                                 @endforeach
                             </x-ui.select>
                         </x-ui.field>
+                    </div>
 
+                    <div class="grid gap-6 sm:grid-cols-[1fr_12rem]">
                         <x-ui.field label="Model" for="model" error="model" :hint="'Leave empty to use '.config('reviews.model').'.'">
                             <x-ui.input id="model" wire:model="model" class="font-mono" :placeholder="config('reviews.model')" />
                         </x-ui.field>
 
-                        <x-ui.field label="Reasoning effort" for="effort" error="effort" hint="Leave on the organization setting unless this agent needs deeper or faster reviews.">
+                        <x-ui.field label="Reasoning effort" for="effort" error="effort" hint="Empty uses the organization's review effort.">
                             <x-ui.select id="effort" wire:model="effort">
                                 <option value="">Organization setting</option>
                                 @foreach (App\Models\Organization::AI_EFFORTS as $value => $label)
@@ -431,7 +433,7 @@ new class extends Component
                             <ul class="divide-y rounded-md border text-sm">
                                 @foreach ($this->testRuns as $run)
                                     <li wire:key="test-run-{{ $run->id }}">
-                                        <a href="{{ route('pull-requests.show', ['pullRequest' => $run->pull_request_id, 'run' => $run->id]) }}" wire:navigate class="flex flex-wrap items-center gap-2 px-3 py-2 hover:bg-muted/50">
+                                        <a href="{{ route('pull-requests.show', ['pullRequest' => $run->pull_request_id, 'run' => $run->id]) }}" wire:navigate class="flex flex-wrap items-center gap-2 px-3 py-2 transition-colors hover:bg-muted/50">
                                             <x-ui.badge :variant="$run->status->badgeVariant()">{{ $run->status->label() }}</x-ui.badge>
                                             @if ($run->is_dry_run)
                                                 <x-ui.badge variant="outline">Test</x-ui.badge>

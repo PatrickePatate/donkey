@@ -3,10 +3,10 @@
 use App\Enums\OrganizationRole;
 use App\Models\Organization;
 use App\Services\Audit\AuditLog;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -47,7 +47,10 @@ new #[Title('Organization settings')] class extends Component
 
     public string $conversationModel = '';
 
-    public string $aiEffort = '';
+    /**
+     * @var array<string, string>
+     */
+    public array $aiEfforts = [];
 
     /**
      * @var array<string, string>
@@ -77,7 +80,7 @@ new #[Title('Organization settings')] class extends Component
         $this->ecoModel = (string) $this->organization->eco_model;
         $this->verifierModel = (string) $this->organization->verifier_model;
         $this->conversationModel = (string) $this->organization->conversation_model;
-        $this->aiEffort = (string) $this->organization->ai_effort;
+        $this->aiEfforts = array_map(fn (string $role): string => (string) ($this->organization->ai_efforts[$role] ?? ''), array_combine(array_keys(Organization::AI_EFFORT_ROLES), array_keys(Organization::AI_EFFORT_ROLES)));
     }
 
     public function saveAi(): void
@@ -91,8 +94,10 @@ new #[Title('Organization settings')] class extends Component
             'ecoModel' => ['nullable', 'string', 'max:255'],
             'verifierModel' => ['nullable', 'string', 'max:255'],
             'conversationModel' => ['nullable', 'string', 'max:255'],
-            'aiEffort' => ['nullable', Rule::in(array_keys(Organization::AI_EFFORTS))],
+            'aiEfforts' => ['array:'.implode(',', array_keys(Organization::AI_EFFORT_ROLES))],
+            'aiEfforts.*' => ['nullable', Rule::in(array_keys(Organization::AI_EFFORTS))],
         ]);
+        $efforts = array_filter($validated['aiEfforts'] ?? []);
 
         // A key belongs to one provider: never send the old provider's key to the new one.
         $providerChanged = $validated['aiProvider'] !== $this->organization->aiProvider();
@@ -104,7 +109,7 @@ new #[Title('Organization settings')] class extends Component
             'eco_model' => $validated['ecoModel'] ?: null,
             'verifier_model' => $validated['verifierModel'] ?: null,
             'conversation_model' => $validated['conversationModel'] ?: null,
-            'ai_effort' => $validated['aiEffort'] ?: null,
+            'ai_efforts' => $efforts === [] ? null : $efforts,
             ...($newKey !== null || $providerChanged ? ['ai_api_key' => $newKey] : []),
         ]);
 
@@ -225,7 +230,7 @@ new #[Title('Organization settings')] class extends Component
                 preg_match('/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/', $domain) !== 1 => "\"{$domain}\" is not a valid domain.",
                 in_array($domain, config('auto_join.public_domains'), true) => "{$domain} is a public email provider; anyone can get an address there.",
                 Organization::query()->whereKeyNot($this->organization->id)->whereJsonContains('auto_join_domains', $domain)->exists() => "{$domain} is already used by another organization.",
-                ! in_array($domain, $current, true) && ($domain !== $userDomain || ! $user->hasVerifiedEmail()) => "To add {$domain}, sign in with a verified {$domain} email address.",
+                !in_array($domain, $current, true) && ($domain !== $userDomain || !$user->hasVerifiedEmail()) => "To add {$domain}, sign in with a verified {$domain} email address.",
                 default => null,
             };
 
@@ -331,12 +336,17 @@ new #[Title('Organization settings')] class extends Component
                     </x-ui.field>
                 </div>
 
-                @if ($canUpdate)
-                    <x-slot:footer>
-                        <x-ui.button type="submit">Save changes</x-ui.button>
-                    </x-slot:footer>
-                @endif
             </x-ui.card>
+
+            @if ($canUpdate)
+                <div class="sticky bottom-4 z-10 flex items-center justify-between gap-4 rounded-lg border bg-card/95 p-3 pl-4 shadow-lg backdrop-blur animate-enter">
+                    <p class="text-sm text-muted-foreground">Saves General, Joining and Reviews.</p>
+                    <x-ui.button type="submit">
+                        <x-ui.icon name="refresh" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="save" />
+                        Save organization settings
+                    </x-ui.button>
+                </div>
+            @endif
         </fieldset>
     </form>
 
@@ -356,29 +366,36 @@ new #[Title('Organization settings')] class extends Component
                         <x-ui.input id="aiApiKey" type="password" wire:model="aiApiKey" autocomplete="off" placeholder="{{ $this->organization->hasAiKey() ? '••••••••••••' : 'sk-…' }}" />
                     </x-ui.field>
 
-                    <div class="grid gap-6 sm:grid-cols-2">
-                        <x-ui.field label="Review model" for="reviewModel" error="reviewModel" :hint="'Default: '.config('reviews.model').'. With OpenRouter use vendor/model ids.'">
-                            <x-ui.input id="reviewModel" wire:model="reviewModel" placeholder="{{ config('reviews.model') }}" />
-                        </x-ui.field>
-                        <x-ui.field label="Eco-mode model" for="ecoModel" error="ecoModel" hint="Small, low-risk tasks when eco-mode is on. Empty uses the review model.">
-                            <x-ui.input id="ecoModel" wire:model="ecoModel" />
-                        </x-ui.field>
-                        <x-ui.field label="Verifier model" for="verifierModel" error="verifierModel" hint="Re-checks findings. Empty uses the review model.">
-                            <x-ui.input id="verifierModel" wire:model="verifierModel" />
-                        </x-ui.field>
-                        <x-ui.field label="Conversation model" for="conversationModel" error="conversationModel" hint="Answers to @mentions on GitHub. Empty uses the review model.">
-                            <x-ui.input id="conversationModel" wire:model="conversationModel" />
-                        </x-ui.field>
+                    @php($modelHints = [
+                        'review' => 'Default: '.config('reviews.model').'. With OpenRouter use vendor/model ids.',
+                        'eco' => 'Small, low-risk tasks when eco-mode is on. Empty uses the review model.',
+                        'verifier' => 'Re-checks findings. Empty uses the review model.',
+                        'conversation' => 'Answers to @mentions on GitHub. Empty uses the review model.',
+                    ])
+                    <div class="grid gap-4">
+                        <p class="text-sm text-muted-foreground">Reasoning effort: higher is more thorough, slower and costlier. Sent to Anthropic, OpenAI and OpenRouter only.</p>
+                        @foreach (Organization::AI_EFFORT_ROLES as $role => $roleLabel)
+                            <div wire:key="ai-role-{{ $role }}" class="grid gap-3 sm:grid-cols-[1fr_10rem]">
+                                @if (isset($modelHints[$role]))
+                                    <x-ui.field :label="$roleLabel.' model'" :for="$role.'Model'" :error="$role.'Model'" :hint="$modelHints[$role]">
+                                        <x-ui.input :id="$role.'Model'" wire:model="{{ $role }}Model" :placeholder="$role === 'review' ? config('reviews.model') : ''" />
+                                    </x-ui.field>
+                                @else
+                                    <x-ui.field :label="$roleLabel.' model'" hint="Uses the review model.">
+                                        <x-ui.input :value="$reviewModel ?: config('reviews.model')" disabled />
+                                    </x-ui.field>
+                                @endif
+                                <x-ui.field label="Effort" :for="'aiEfforts-'.$role" :error="'aiEfforts.'.$role">
+                                    <x-ui.select :id="'aiEfforts-'.$role" wire:model="aiEfforts.{{ $role }}">
+                                        <option value="">Provider default</option>
+                                        @foreach (Organization::AI_EFFORTS as $value => $label)
+                                            <option value="{{ $value }}">{{ $label }}</option>
+                                        @endforeach
+                                    </x-ui.select>
+                                </x-ui.field>
+                            </div>
+                        @endforeach
                     </div>
-
-                    <x-ui.field label="Reasoning effort" for="aiEffort" error="aiEffort" hint="How hard every model thinks. Higher is more thorough, slower and costlier. Sent to Anthropic, OpenAI and OpenRouter only.">
-                        <x-ui.select id="aiEffort" wire:model="aiEffort" class="sm:max-w-xs">
-                            <option value="">Provider default</option>
-                            @foreach (Organization::AI_EFFORTS as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </x-ui.select>
-                    </x-ui.field>
                 </div>
 
                 <x-slot:footer>

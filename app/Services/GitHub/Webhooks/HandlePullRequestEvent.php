@@ -56,11 +56,14 @@ class HandlePullRequestEvent
 
         if ($event->action === 'closed' && $pullRequest->state === 'merged' && $pullRequest->base_ref === $repository->default_branch && is_string($mergeCommit)) {
             BuildRepositoryGraph::dispatch($repository, $mergeCommit);
-            ScanRepositoryDependencies::dispatch($repository);
 
             if ($repository->auto_docs_enabled) {
                 GenerateRepositoryDocumentation::dispatchFor($repository);
             }
+        }
+
+        if ($event->action === 'closed' && $pullRequest->state === 'merged' && $pullRequest->base_ref === $repository->securityBranch()) {
+            ScanRepositoryDependencies::dispatch($repository);
         }
 
         return WebhookEventStatus::Processed;

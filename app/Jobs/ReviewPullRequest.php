@@ -15,9 +15,11 @@ use App\Models\ReviewRun;
 use App\Services\GitHub\PullRequestClient;
 use App\Services\Graph\GraphContext;
 use App\Services\Graph\GraphContextProvider;
+use App\Services\Graph\GraphContextResult;
 use App\Services\Knowledge\KnowledgeRetriever;
 use App\Services\Knowledge\ReviewKnowledge;
 use App\Services\Knowledge\SignalRecorder;
+use App\Services\Review\CodeExplorer;
 use App\Services\Review\FilePatch;
 use App\Services\Review\FindingVerifierService;
 use App\Services\Review\ProposedFinding;
@@ -178,7 +180,8 @@ class ReviewPullRequest implements ShouldQueue
             $run->log('Code graph: '.$graph->status->value);
 
             $this->stage($run, ReviewStage::Analyzing);
-            $analysis = $this->analyze($run, $analyzer, $context, $graph->context, $knowledge);
+            $explorer = $this->explorer($run, $graph);
+            $analysis = $this->analyze($run, $analyzer, $context, $graph->context, $knowledge, $explorer);
             $run->update([
                 'tokens_input' => $analysis->inputTokens,
                 'tokens_output' => $analysis->outputTokens,
@@ -196,7 +199,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             $this->stage($run, ReviewStage::Validating);
-            $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier, $knowledge));
+            $findings = $this->storeFindings($run, $this->decide($run, $analysis, $verifier, $knowledge, $explorer));
             $run->log($findings->countBy(fn (ReviewFinding $finding): string => $finding->status->value)->map(fn (int $count, string $status): string => "{$count} {$status}")->implode(', ') ?: 'No findings');
             $run->update([
                 'tokens_input' => $run->tokens_input + $verifier->inputTokens,
@@ -257,16 +260,16 @@ class ReviewPullRequest implements ShouldQueue
      * The general review plus every agent set to join automatic reviews whose files changed,
      * or only the requested agent for an agent run.
      */
-    private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph, ReviewKnowledge $knowledge): ReviewAnalysis
+    private function analyze(ReviewRun $run, ReviewAnalyzer $analyzer, ReviewContext $context, ?GraphContext $graph, ReviewKnowledge $knowledge, ?CodeExplorer $explorer): ReviewAnalysis
     {
         $pullRequest = $run->pullRequest;
         $log = fn (string $message) => $run->log($message);
 
         if ($run->agent !== null) {
-            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge, $log, $run);
+            return $analyzer->analyze($pullRequest, $context, $graph, $run->agent, $knowledge, $log, $run, $explorer);
         }
 
-        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge, log: $log, run: $run);
+        $analysis = $analyzer->analyze($pullRequest, $context, $graph, knowledge: $knowledge, log: $log, run: $run, explorer: $explorer);
 
         $agents = ReviewAgent::availableFor($pullRequest->repository)->where('run_on_auto_review', true);
 
@@ -278,7 +281,7 @@ class ReviewPullRequest implements ShouldQueue
             }
 
             try {
-                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge, $log, $run));
+                $analysis = $analysis->merge($analyzer->analyze($pullRequest, $agentContext, $graph, $agent, $knowledge, $log, $run, $explorer));
             } catch (Throwable $exception) {
                 // One failing agent must not sink the whole review.
                 report($exception);
@@ -286,6 +289,24 @@ class ReviewPullRequest implements ShouldQueue
         }
 
         return $analysis;
+    }
+
+    /**
+     * Tools for the reviewer and the verifier. They read the graph workspace, which only holds the head commit once
+     * the graph step succeeded; every call shows in the live log.
+     */
+    private function explorer(ReviewRun $run, GraphContextResult $graph): ?CodeExplorer
+    {
+        if (! config('reviews.tools.enabled') || $graph->baseGraph === null) {
+            return null;
+        }
+
+        return app(CodeExplorer::class, [
+            'repository' => $run->pullRequest->repository,
+            'headSha' => $run->head_sha,
+            'graph' => $graph->baseGraph,
+            'log' => fn (string $message) => $run->log($message, 'tool'),
+        ]);
     }
 
     /**
@@ -302,7 +323,7 @@ class ReviewPullRequest implements ShouldQueue
      *
      * @return list<array{finding: ProposedFinding, status: FindingStatus, verification: ?FindingVerification, note: ?string, learning_id: ?int}>
      */
-    private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier, ReviewKnowledge $knowledge): array
+    private function decide(ReviewRun $run, ReviewAnalysis $analysis, FindingVerifierService $verifier, ReviewKnowledge $knowledge, ?CodeExplorer $explorer): array
     {
         $previous = ReviewFinding::query()
             ->where('pull_request_id', $run->pull_request_id)
@@ -342,7 +363,7 @@ class ReviewPullRequest implements ShouldQueue
             return array_values($decisions);
         }
 
-        $verdicts = $verifier->verify($run, $candidates, $knowledge);
+        $verdicts = $verifier->verify($run, $candidates, $knowledge, $explorer);
 
         foreach ($candidates as $index => $finding) {
             $verdict = $verdicts[$index] ?? null;

@@ -20,7 +20,7 @@ trait ExploresCode
     /**
      * @param  list<Tool>  $tools
      */
-    public function withTools(array $tools): static
+    public function withCodeTools(array $tools): static
     {
         $this->tools = $tools;
 

@@ -25,8 +25,9 @@ class ReviewAnalyzer
 
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
+     * @param  ?CodeExplorer  $explorer  Tools to look up code beyond the diff; without it the reviewer only sees its prompt.
      */
-    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null, ?Closure $log = null, ?ReviewRun $run = null): ReviewAnalysis
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null, ?Closure $log = null, ?ReviewRun $run = null, ?CodeExplorer $explorer = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -44,7 +45,7 @@ class ReviewAnalyzer
         foreach ($chunks as $number => $chunk) {
             $model = $this->models->reviewModel($routingOrganization, $agent, $chunk, $graph);
             $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
-            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->ai_effort)->prompt(
+            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->ai_effort)->withCodeTools($explorer?->tools() ?? [])->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: $this->ai->provider($aiOrganization),
                 model: $model,

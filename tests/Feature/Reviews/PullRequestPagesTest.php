@@ -173,3 +173,16 @@ it('shows the estimated cost of the calls a review made', function () {
         ->assertSee('Estimated cost')
         ->assertSee('$1.50');
 });
+
+it('shows tool calls in the live log with their tool, arguments and outcome', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+    $run = ReviewRun::factory()->for($pullRequest)->create(['status' => ReviewRunStatus::Running, 'stage' => ReviewStage::Analyzing]);
+    $run->log('Asking claude-sonnet-5-5 about part 1 of 1 (2 files)');
+    $run->log('search_code "->charge(" in app/ → 3 matches', 'tool');
+
+    $this->actingAs($user)
+        ->get(route('pull-requests.show', $pullRequest))
+        ->assertOk()
+        ->assertSeeInOrder(['Asking claude-sonnet-5-5', 'search_code', '&quot;-&gt;charge(&quot; in app/', '→ 3 matches'], false);
+});

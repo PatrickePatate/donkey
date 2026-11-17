@@ -340,7 +340,19 @@ new class extends Component
                                 >
                                     @foreach ($this->logs as $log)
                                         <li wire:key="log-{{ $log->id }}" @class(['text-destructive' => $log->level === 'error'])>
-                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span> {{ $log->message }}
+                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span>
+                                            @if ($call = $log->toolCall())
+                                                <span class="ml-4 inline-flex items-center gap-1 rounded border bg-background px-1.5 align-middle font-medium">
+                                                    <x-ui.icon :name="match ($call['tool']) { 'read_file' => 'file-code', 'search_code' => 'search', 'symbol_graph' => 'git-branch', default => 'bot' }" class="size-3 text-muted-foreground" />
+                                                    {{ $call['tool'] }}
+                                                </span>
+                                                <span class="break-all">{{ $call['arguments'] }}</span>
+                                                @if ($call['outcome'] !== '')
+                                                    <span class="text-muted-foreground">→ {{ $call['outcome'] }}</span>
+                                                @endif
+                                            @else
+                                                {{ $log->message }}
+                                            @endif
                                         </li>
                                     @endforeach
                                 </ol>

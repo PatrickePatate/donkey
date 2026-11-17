@@ -27,6 +27,23 @@ class ReviewRunLog extends Model
     }
 
     /**
+     * A tool call line split as the review tools log it: "tool arguments → outcome".
+     *
+     * @return ?array{tool: string, arguments: string, outcome: string}
+     */
+    public function toolCall(): ?array
+    {
+        if ($this->level !== 'tool') {
+            return null;
+        }
+
+        [$call, $outcome] = array_pad(explode(' → ', $this->message, 2), 2, '');
+        [$tool, $arguments] = array_pad(explode(' ', $call, 2), 2, '');
+
+        return ['tool' => $tool, 'arguments' => $arguments, 'outcome' => $outcome];
+    }
+
+    /**
      * @return BelongsTo<ReviewRun, $this>
      */
     public function reviewRun(): BelongsTo

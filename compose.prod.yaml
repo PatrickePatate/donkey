@@ -10,7 +10,12 @@ x-app: &app
     target: app
   image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
   restart: unless-stopped
-  env_file: .env
+  env_file: &env_files
+    - path: .env
+      required: false
+    # Older installs keep their settings here (pass --env-file .env.production, as deploy.sh does).
+    - path: .env.production
+      required: false
   volumes:
     - storage:/var/www/html/storage
     - ${GITHUB_APP_PRIVATE_KEY_FILE:-./github-app.pem}:/var/www/html/storage/app/private/github-app.pem:ro
@@ -64,7 +69,7 @@ services:
       context: .
       target: app
     image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
-    env_file: .env
+    env_file: *env_files
     volumes:
       - storage:/var/www/html/storage
     # Passport (MCP OAuth) keys are created once in the storage volume; regenerating them would sign everyone out.

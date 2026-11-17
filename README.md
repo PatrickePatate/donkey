@@ -60,7 +60,7 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
    cp .env.docker.example .env
    ```
 
-   Only `APP_URL`, the `GITHUB_*` values and mail need filling in; everything else has a working default. `APP_KEY` and the Reverb keys are generated on first start and kept in the `storage` volume (`storage/app/private/generated.env`); set them in `.env` to use your own. `.env` also sets `COMPOSE_FILE=compose.prod.yaml`, so plain `docker compose` commands (`up -d`, `logs`, `ps`…) use the production stack.
+   Only `APP_URL`, the `GITHUB_*` values and mail need filling in; everything else has a working default. `APP_KEY` and the Reverb keys are generated on first start and kept in the `storage` volume (`storage/app/private/generated.env`); set them in `.env` to use your own. `.env` also sets `COMPOSE_FILE=compose.prod.yaml`, so plain `docker compose` commands (`up -d`, `logs`, `ps`…) use the production stack. Installs that already have a `.env.production` keep working through `./deploy.sh` (or `--env-file .env.production -f compose.prod.yaml`).
 
 3. **Start it.** Images are built by GitHub Actions on every push to `main` and published to GHCR (`ghcr.io/<owner>/donkey-app` and `donkey-web`), so the server never builds anything:
 

@@ -5,6 +5,8 @@ cd "$(dirname "$0")"
 
 export DONKEY_TAG="${1:-latest}"
 compose="docker compose -f compose.prod.yaml"
+# Older installs keep their settings in .env.production instead of .env.
+if [ -f .env.production ]; then compose="$compose --env-file .env.production"; fi
 
 $compose pull
 $compose up -d --remove-orphans

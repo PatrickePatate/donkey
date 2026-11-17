@@ -7,7 +7,7 @@ x-app: &app
   build:
     context: .
     target: app
-  image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
+  image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
   restart: unless-stopped
   env_file: .env.production
   environment:
@@ -31,7 +31,7 @@ services:
     build:
       context: .
       target: web
-    image: ghcr.io/patrickepatate/donkey-web:${DONKEY_TAG:-latest}
+    image: ghcr.io/code16/donkey-web:${DONKEY_TAG:-latest}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DONKEY_PORT:-8090}:80"
@@ -59,7 +59,7 @@ services:
     build:
       context: .
       target: app
-    image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
+    image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
     env_file: .env.production
     environment:
       DB_HOST: pgsql

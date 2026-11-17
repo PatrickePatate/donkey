@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b9a945344c9d45aae4e459ed908b2d88",
+    "content-hash": "cad85012600bcbbe35620af9a4c9c9f1",
     "packages": [
         {
             "name": "brick/math",
@@ -7581,6 +7581,69 @@
                 }
             ],
             "time": "2026-11-14T20:49:33+00:00"
+        },
+        {
+            "name": "code16/pint-config",
+            "version": "v1.4.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/code16/pint-config.git",
+                "reference": "3f3bcacb56ff2b423999511f8ed988c211e0a7ac"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/code16/pint-config/zipball/3f3bcacb56ff2b423999511f8ed988c211e0a7ac",
+                "reference": "3f3bcacb56ff2b423999511f8ed988c211e0a7ac",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/contracts": "^11.0|^12.0|^13.0",
+                "laravel/pint": "^1.30",
+                "php": "^8.3",
+                "symfony/process": "^7.0|^8.0"
+            },
+            "require-dev": {
+                "laravel/framework": "^13.0",
+                "nunomaduro/collision": "^7.10|^8.1"
+            },
+            "bin": [
+                "bin/pint-config"
+            ],
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Code16\\PintConfig\\PintConfigServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Code16\\PintConfig\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "code16",
+                    "email": "antoine@code16.fr",
+                    "role": "Developer"
+                }
+            ],
+            "description": "This is my package pint-config",
+            "homepage": "https://github.com/code16/pint-config",
+            "keywords": [
+                "laravel",
+                "pint-config"
+            ],
+            "support": {
+                "issues": "https://github.com/code16/pint-config/issues",
+                "source": "https://github.com/code16/pint-config/tree/v1.4.1"
+            },
+            "time": "2026-08-21T14:26:42+00:00"
         },
         {
             "name": "composer/semver",

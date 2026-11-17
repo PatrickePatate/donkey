@@ -1,0 +1,21 @@
+name: Laravel Tests
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  laravel-tests:
+    uses: code16/.github/.github/workflows/tests.yml@main
+    with:
+      php-version: '8.5'
+      # The shared workflow only provides MySQL: tests need Postgres with pgvector, and pages need the Vite manifest.
+      setup-command: |
+        docker run -d --name pgsql -p 5432:5432 -e POSTGRES_USER=donkey -e POSTGRES_PASSWORD=donkey -e POSTGRES_DB=donkey_testing pgvector/pgvector:pg18
+        npm ci
+        npm run build
+        until docker exec pgsql pg_isready -h 127.0.0.1 -U donkey -d donkey_testing; do sleep 1; done
+      test-command: DB_CONNECTION=pgsql DB_PORT=5432 DB_DATABASE=donkey_testing DB_USERNAME=donkey DB_PASSWORD=donkey ./vendor/bin/pest --ci
+      # Failure notifications only fire for PRs targeting `production`, which this repository doesn't have.
+      slack-channel-id: ''
+    secrets: inherit

@@ -45,7 +45,7 @@ COPY --from=vendor /var/www/html/vendor ./vendor
 COPY . .
 COPY --from=assets /build/public/build ./public/build
 
-RUN composer dump-autoload --no-dev --optimize --no-interaction \
+RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
     && php artisan package:discover --ansi \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/private bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache

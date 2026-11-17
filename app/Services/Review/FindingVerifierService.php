@@ -26,9 +26,10 @@ class FindingVerifierService
 
     /**
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
+     * @param  ?CodeExplorer  $explorer  Tools to check claims about code outside each finding's excerpt.
      * @return array<int, Verdict> Missing ids were not verified.
      */
-    public function verify(ReviewRun $run, array $findings, ?ReviewKnowledge $knowledge = null): array
+    public function verify(ReviewRun $run, array $findings, ?ReviewKnowledge $knowledge = null, ?CodeExplorer $explorer = null): array
     {
         if ($findings === [] || ! config('reviews.verifier.enabled')) {
             return [];
@@ -38,7 +39,7 @@ class FindingVerifierService
         $model = $this->models->verifierModel($organization, $findings);
 
         try {
-            $response = FindingVerifier::make()->prompt(
+            $response = FindingVerifier::make()->withEffort($organization->ai_effort)->withCodeTools($explorer?->tools() ?? [])->prompt(
                 $this->prompt($run, $findings, $knowledge),
                 provider: $this->ai->provider($organization),
                 model: $model,
@@ -60,6 +61,7 @@ class FindingVerifierService
             $model,
             $response->usage,
             pullRequest: $run->pullRequest,
+            reviewRun: $run,
         );
 
         $verdicts = [];

@@ -46,6 +46,10 @@ it('creates an agent from a template', function () {
         ->assertSet('categories', ['security'])
         ->set('fileGlobs', "app/Http/*\n*.php\n")
         ->set('runOnAutoReview', true)
+        ->set('effort', 'extreme')
+        ->call('save')
+        ->assertHasErrors('effort')
+        ->set('effort', 'high')
         ->call('save')
         ->assertHasNoErrors()
         ->assertRedirect();
@@ -58,6 +62,7 @@ it('creates an agent from a template', function () {
         ->file_globs->toBe(['app/Http/*', '*.php'])
         ->severity_floor->toBe(FindingSeverity::Medium)
         ->run_on_auto_review->toBeTrue()
+        ->effort->toBe('high')
         ->and($agent->matchesPath('app/Http/Controllers/BillingController.php'))->toBeTrue()
         ->and($agent->matchesPath('resources/js/app.js'))->toBeFalse();
 });

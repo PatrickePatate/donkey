@@ -10,6 +10,7 @@ use App\Models\ModelPrice;
 use App\Models\Organization;
 use App\Models\PullRequest;
 use App\Models\Repository;
+use App\Models\ReviewRun;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -28,10 +29,12 @@ class UsageMeter
         Usage $usage,
         ?Repository $repository = null,
         ?PullRequest $pullRequest = null,
+        ?ReviewRun $reviewRun = null,
     ): AiUsage {
         $record = $organization->aiUsages()->create([
             'repository_id' => $repository->id ?? $pullRequest?->repository_id,
             'pull_request_id' => $pullRequest?->id,
+            'review_run_id' => $reviewRun?->id,
             'feature' => $feature,
             'provider' => $provider,
             'model' => $model,

@@ -21,7 +21,10 @@ class KodusGraph
         }
 
         return Cache::remember('kodus-graph:available', now()->addMinutes(5), function (): bool {
-            return Process::timeout(30)->env($this->environment())->run([config('graph.binary'), '--version'])->successful();
+            $result = Process::timeout(30)->env($this->environment())->run([config('graph.binary'), '--version']);
+
+            // An uninstalled Bun (empty binary) exits 0 silently, so require an actual version.
+            return $result->successful() && preg_match('/\d+\.\d+\.\d+/', $result->output()) === 1;
         });
     }
 
@@ -53,7 +56,7 @@ class KodusGraph
      * Review context for changed files, compared against a base-branch graph.
      *
      * @param  list<string>  $files
-     * @param  'prompt'|'json'  $format
+     * @param  'prompt'|'xml'|'json'  $format
      */
     public function context(string $repoDirectory, string $graphPath, array $files, string $diffPath, string $format, string $outputPath): ProcessResult
     {

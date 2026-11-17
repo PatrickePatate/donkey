@@ -9,6 +9,7 @@ use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 /**
  * A persistent, shallow git checkout per repository, used as kodus-graph's --repo-dir.
@@ -58,6 +59,50 @@ class RepositoryWorkspace
         $this->git($repository, $directory, ['clean', '--quiet', '-ffdx']);
 
         return $directory;
+    }
+
+    /**
+     * A file at an already fetched commit, read from git objects: no checkout, so no lock is needed.
+     */
+    public function show(Repository $repository, string $sha, string $path): ?string
+    {
+        $result = $this->readOnlyGit($repository, ['show', "{$sha}:{$path}"]);
+
+        return $result->successful() ? $result->output() : null;
+    }
+
+    /**
+     * Lines containing a fixed string at an already fetched commit, as "path:line:content".
+     *
+     * @return list<string>
+     */
+    public function grep(Repository $repository, string $sha, string $text, ?string $pathspec = null): array
+    {
+        $arguments = ['grep', '-n', '-I', '-F', '--no-color', '--max-count=20', '-e', $text, $sha, '--'];
+        $result = $this->readOnlyGit($repository, $pathspec !== null && $pathspec !== '' ? [...$arguments, $pathspec] : $arguments);
+
+        // git grep exits 1 when nothing matches.
+        if (! $result->successful()) {
+            return [];
+        }
+
+        return array_values(array_map(
+            fn (string $line): string => Str::after($line, "{$sha}:"),
+            array_filter(explode("\n", $result->output())),
+        ));
+    }
+
+    /**
+     * Local git reads need no credentials, so no installation token is fetched for them.
+     *
+     * @param  list<string>  $arguments
+     */
+    private function readOnlyGit(Repository $repository, array $arguments): ProcessResult
+    {
+        return Process::path($this->path($repository))
+            ->env(['GIT_TERMINAL_PROMPT' => '0', 'GIT_CONFIG_NOSYSTEM' => '1'])
+            ->timeout(30)
+            ->run([config('graph.git_binary'), ...$arguments]);
     }
 
     public function forget(Repository $repository): void

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\OrganizationRole;
+use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\SyncInstallationRepositories;
 use App\Models\GithubInstallation;
 use App\Models\Repository;
@@ -111,6 +112,7 @@ it('refuses to move an installation linked to another organization', function ()
 it('syncs the repositories an installation can access', function () {
     $installation = GithubInstallation::factory()->create(['installation_id' => 321]);
     $stale = Repository::factory()->for($installation, 'installation')->create(['organization_id' => $installation->organization_id]);
+    Bus::fake([BuildRepositoryGraph::class]);
 
     Http::fake([
         'api.github.com/app/installations/321/access_tokens' => Http::response(['token' => 'installation-token'], 201),
@@ -129,6 +131,22 @@ it('syncs the repositories an installation can access', function () {
         ->and(Repository::find($stale->id))->toBeNull()
         ->and($installation->fresh()->synced_at)->not->toBeNull();
 
+    Bus::assertDispatchedTimes(BuildRepositoryGraph::class, 2);
+
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer installation-token')
         && str_contains($request->url(), '/installation/repositories'));
+});
+
+it('queues a graph build for every repository, or only those of one organization', function () {
+    $installation = GithubInstallation::factory()->create();
+    Repository::factory()->count(2)->for($installation, 'installation')->create(['organization_id' => $installation->organization_id]);
+    Repository::factory()->create();
+    Bus::fake([BuildRepositoryGraph::class]);
+
+    $this->artisan('graphs:build', ['--organization' => $installation->organization_id])->assertSuccessful();
+    Bus::assertDispatchedTimes(BuildRepositoryGraph::class, 2);
+
+    // Builds still queued are unique, so only the other organization's repository is added.
+    $this->artisan('graphs:build')->assertSuccessful();
+    Bus::assertDispatchedTimes(BuildRepositoryGraph::class, 3);
 });

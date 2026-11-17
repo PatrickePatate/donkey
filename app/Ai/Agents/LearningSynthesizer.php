@@ -2,19 +2,21 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\HasEffort;
 use App\Enums\FindingCategory;
 use App\Enums\LearningKind;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 
 /**
  * Turns negative feedback on review findings into general, reusable lessons for future reviews.
  */
-class LearningSynthesizer implements Agent, HasStructuredOutput
+class LearningSynthesizer implements Agent, HasProviderOptions, HasStructuredOutput
 {
-    use Promptable;
+    use HasEffort, Promptable;
 
     public function instructions(): string
     {

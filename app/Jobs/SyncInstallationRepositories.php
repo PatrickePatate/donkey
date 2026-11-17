@@ -10,7 +10,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Mirrors the repositories an installation can access: upserts new ones, removes revoked ones.
+ * Mirrors the repositories an installation can access: upserts new ones, removes revoked ones,
+ * and queues a graph build of each default branch (a no-op when that commit is already built).
  */
 class SyncInstallationRepositories implements ShouldBeUnique, ShouldQueue
 {
@@ -35,13 +36,15 @@ class SyncInstallationRepositories implements ShouldBeUnique, ShouldQueue
         $repositories = $github->installationRepositories($this->installation->installation_id);
 
         foreach ($repositories as $repository) {
-            $this->installation->repositories()->updateOrCreate(
+            $synced = $this->installation->repositories()->updateOrCreate(
                 ['github_id' => $repository['id']],
                 [
                     'organization_id' => $this->installation->organization_id,
                     ...self::attributesFrom($repository),
                 ],
             );
+
+            BuildRepositoryGraph::dispatch($synced);
         }
 
         $this->installation->repositories()

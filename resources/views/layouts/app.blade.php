@@ -25,6 +25,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     @include('partials.head')
+    <link rel="icon" href="{{ asset('favicon.png') }}" type="image/png">
 </head>
 <body class="min-h-svh" @if ($organization) data-organization-id="{{ $organization->id }}" @endif>
     <div x-data="{ sidebarOpen: false }" class="flex min-h-svh">
@@ -39,9 +40,7 @@
                     <x-ui.dropdown align="start" width="w-58">
                         <x-slot:trigger>
                             <button type="button" class="flex w-full items-center gap-2 rounded-md p-2 text-left hover:bg-accent">
-                                <span class="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-                                    {{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($organization->name, 0, 1)) }}
-                                </span>
+                                <x-organization-avatar :organization="$organization" />
                                 <span class="grid flex-1 text-sm leading-tight">
                                     <span class="truncate font-semibold">{{ $organization->name }}</span>
                                     <span class="truncate text-xs text-muted-foreground">{{ $user->roleIn($organization)?->label() }}</span>
@@ -56,7 +55,8 @@
                                 @csrf
                                 @method('PUT')
                                 <x-ui.dropdown-item type="submit">
-                                    <span class="flex-1 truncate">{{ $item->name }}</span>
+                                    <x-organization-avatar :organization="$item" size="size-6 text-xs" />
+                                    <span class="flex-1 truncate text-left">{{ $item->name }}</span>
                                     @if ($item->is($organization))
                                         <x-ui.icon name="check" />
                                     @endif
@@ -65,7 +65,7 @@
                         @endforeach
                         <x-ui.separator class="my-1" />
                         <x-ui.dropdown-item :href="route('organizations.create')" wire:navigate>
-                            <x-ui.icon name="plus" /> New organization
+                            <span class="flex size-6 items-center justify-center rounded-md border"><x-ui.icon name="plus" /></span> New organization
                         </x-ui.dropdown-item>
                     </x-ui.dropdown>
                 @endif

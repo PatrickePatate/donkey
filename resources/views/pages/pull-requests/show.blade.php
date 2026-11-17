@@ -340,7 +340,19 @@ new class extends Component
                                 >
                                     @foreach ($this->logs as $log)
                                         <li wire:key="log-{{ $log->id }}" @class(['text-destructive' => $log->level === 'error'])>
-                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span> {{ $log->message }}
+                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span>
+                                            @if ($call = $log->toolCall())
+                                                <span class="ml-4 inline-flex items-center gap-1 rounded border bg-background px-1.5 align-middle font-medium">
+                                                    <x-ui.icon :name="match ($call['tool']) { 'read_file' => 'file-code', 'search_code' => 'search', 'symbol_graph' => 'git-branch', default => 'bot' }" class="size-3 text-muted-foreground" />
+                                                    {{ $call['tool'] }}
+                                                </span>
+                                                <span class="break-all">{{ $call['arguments'] }}</span>
+                                                @if ($call['outcome'] !== '')
+                                                    <span class="text-muted-foreground">→ {{ $call['outcome'] }}</span>
+                                                @endif
+                                            @else
+                                                {{ $log->message }}
+                                            @endif
                                         </li>
                                     @endforeach
                                 </ol>
@@ -533,6 +545,8 @@ new class extends Component
                         <dd class="text-right tabular-nums">{{ $run->files_reviewed }}</dd>
                         <dt class="text-muted-foreground">Tokens</dt>
                         <dd class="text-right tabular-nums">{{ number_format($run->tokens_input + $run->tokens_output) }}</dd>
+                        <dt class="text-muted-foreground">Estimated cost</dt>
+                        <dd class="text-right tabular-nums">{{ $run->is_dry_run ? '—' : \App\Services\Usage\UsageReport::money($run->estimatedCostMicros()) }}</dd>
                         <dt class="text-muted-foreground">Duration</dt>
                         <dd class="text-right tabular-nums">{{ $run->durationInSeconds() !== null ? $run->durationInSeconds().'s' : '—' }}</dd>
                         <dt class="col-span-2 text-muted-foreground">Model</dt>

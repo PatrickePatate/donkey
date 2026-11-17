@@ -9,6 +9,7 @@ use App\Enums\FindingSeverity;
 use App\Models\Organization;
 use App\Models\PullRequest;
 use App\Models\ReviewAgent;
+use App\Models\ReviewRun;
 use App\Services\Ai\OrganizationAi;
 use App\Services\Graph\GraphContext;
 use App\Services\Knowledge\ReviewKnowledge;
@@ -24,8 +25,9 @@ class ReviewAnalyzer
 
     /**
      * @param  ?ReviewAgent  $agent  A specialist agent to run instead of the general reviewer.
+     * @param  ?CodeExplorer  $explorer  Tools to look up code beyond the diff; without it the reviewer only sees its prompt.
      */
-    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null, ?Closure $log = null): ReviewAnalysis
+    public function analyze(PullRequest $pullRequest, ReviewContext $context, ?GraphContext $graph = null, ?ReviewAgent $agent = null, ?ReviewKnowledge $knowledge = null, ?Closure $log = null, ?ReviewRun $run = null, ?CodeExplorer $explorer = null): ReviewAnalysis
     {
         $findings = [];
         $summaries = [];
@@ -43,7 +45,7 @@ class ReviewAnalyzer
         foreach ($chunks as $number => $chunk) {
             $model = $this->models->reviewModel($routingOrganization, $agent, $chunk, $graph);
             $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
-            $response = CodeReviewer::make(agent: $agent)->prompt(
+            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->ai_effort)->withCodeTools($explorer?->tools() ?? [])->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: $this->ai->provider($aiOrganization),
                 model: $model,
@@ -61,6 +63,7 @@ class ReviewAnalyzer
                     $model,
                     $response->usage,
                     pullRequest: $pullRequest,
+                    reviewRun: $run,
                 );
             }
             $riskScore = max($riskScore, (int) ($response['risk_score'] ?? 0));
@@ -187,11 +190,13 @@ class ReviewAnalyzer
         if ($graph !== null && $graph->prompt !== '') {
             $sections[] = implode("\n", [
                 '<code_graph>',
-                'Structural analysis of the whole repository (deterministic, from the code graph): changed functions, their',
-                'callers, contract changes, blast radius and test coverage. Use it to judge impact beyond the diff, e.g. callers',
-                'that still assume an old signature. Absence from the graph is not proof of absence in the code.',
+                'Structural analysis of the whole repository (deterministic, from the code graph): the changed functions of',
+                'the files below with their callers, callees, risk signals and test coverage, plus symbols this change deletes',
+                'that other code still uses (<RemovedSymbols>). Use it to judge impact beyond the diff, e.g. callers that still',
+                'assume an old signature or call a removed method. Absence from the graph is not proof of absence in the code,',
+                'and callers with a low confidence are inferred: treat them as leads, not facts.',
                 '',
-                $graph->prompt,
+                $graph->promptFor(array_map(fn (FilePatch $file): string => $file->path, $chunk)),
                 '</code_graph>',
             ]);
         }

@@ -6,12 +6,19 @@ use App\Services\Audit\AuditLog;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 new #[Title('Organization settings')] class extends Component
 {
+    use WithFileUploads;
+
+    /** @var ?\Livewire\Features\SupportFileUploads\TemporaryUploadedFile */
+    public $avatar = null;
+
     public string $name = '';
 
     public int $riskThreshold = 50;
@@ -39,6 +46,8 @@ new #[Title('Organization settings')] class extends Component
     public string $verifierModel = '';
 
     public string $conversationModel = '';
+
+    public string $aiEffort = '';
 
     /**
      * @var array<string, string>
@@ -68,6 +77,7 @@ new #[Title('Organization settings')] class extends Component
         $this->ecoModel = (string) $this->organization->eco_model;
         $this->verifierModel = (string) $this->organization->verifier_model;
         $this->conversationModel = (string) $this->organization->conversation_model;
+        $this->aiEffort = (string) $this->organization->ai_effort;
     }
 
     public function saveAi(): void
@@ -81,6 +91,7 @@ new #[Title('Organization settings')] class extends Component
             'ecoModel' => ['nullable', 'string', 'max:255'],
             'verifierModel' => ['nullable', 'string', 'max:255'],
             'conversationModel' => ['nullable', 'string', 'max:255'],
+            'aiEffort' => ['nullable', Rule::in(array_keys(Organization::AI_EFFORTS))],
         ]);
 
         // A key belongs to one provider: never send the old provider's key to the new one.
@@ -93,6 +104,7 @@ new #[Title('Organization settings')] class extends Component
             'eco_model' => $validated['ecoModel'] ?: null,
             'verifier_model' => $validated['verifierModel'] ?: null,
             'conversation_model' => $validated['conversationModel'] ?: null,
+            'ai_effort' => $validated['aiEffort'] ?: null,
             ...($newKey !== null || $providerChanged ? ['ai_api_key' => $newKey] : []),
         ]);
 
@@ -112,6 +124,35 @@ new #[Title('Organization settings')] class extends Component
         app(AuditLog::class)->record($this->organization, 'organization.ai_changed', $this->organization, ['api_key_removed' => true]);
 
         $this->dispatch('toast', message: 'API key removed. Reviews are paused until a new one is saved.', variant: 'success');
+    }
+
+    public function updatedAvatar(): void
+    {
+        Gate::authorize('update', $this->organization);
+
+        $this->validate(['avatar' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:1024', 'dimensions:max_width=2048,max_height=2048']]);
+
+        $previous = $this->organization->avatar_path;
+        $this->organization->update(['avatar_path' => $this->avatar->store('organization-avatars', 'public')]);
+        $previous && Storage::disk('public')->delete($previous);
+
+        app(AuditLog::class)->record($this->organization, 'organization.updated', $this->organization, ['avatar_changed' => true]);
+
+        // Reload so the sidebar and switcher, outside this component, show the new avatar.
+        session()->flash('success', 'Avatar updated.');
+        $this->redirectRoute('settings.organization', navigate: true);
+    }
+
+    public function removeAvatar(): void
+    {
+        Gate::authorize('update', $this->organization);
+
+        if ($this->organization->avatar_path) {
+            Storage::disk('public')->delete($this->organization->avatar_path);
+            $this->organization->update(['avatar_path' => null]);
+        }
+
+        $this->redirectRoute('settings.organization', navigate: true);
     }
 
     #[Computed]
@@ -212,6 +253,18 @@ new #[Title('Organization settings')] class extends Component
         <fieldset @disabled(! $canUpdate) class="grid gap-6">
             <x-ui.card title="General">
                 <div class="grid gap-6">
+                    <x-ui.field label="Avatar" for="avatar" error="avatar" hint="PNG, JPG or WebP, up to 1 MB. A square image works best.">
+                        <div class="flex items-center gap-4">
+                            <x-organization-avatar :organization="$this->organization" size="size-12 text-base" />
+                            @if ($canUpdate)
+                                <input id="avatar" type="file" wire:model="avatar" accept="image/png,image/jpeg,image/webp" class="text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium">
+                                @if ($this->organization->avatar_path)
+                                    <x-ui.button type="button" variant="ghost" wire:click="removeAvatar">Remove</x-ui.button>
+                                @endif
+                            @endif
+                        </div>
+                    </x-ui.field>
+
                     <x-ui.field label="Name" for="name" error="name">
                         <x-ui.input id="name" wire:model="name" required />
                     </x-ui.field>
@@ -317,6 +370,15 @@ new #[Title('Organization settings')] class extends Component
                             <x-ui.input id="conversationModel" wire:model="conversationModel" />
                         </x-ui.field>
                     </div>
+
+                    <x-ui.field label="Reasoning effort" for="aiEffort" error="aiEffort" hint="How hard every model thinks. Higher is more thorough, slower and costlier. Sent to Anthropic, OpenAI and OpenRouter only.">
+                        <x-ui.select id="aiEffort" wire:model="aiEffort" class="sm:max-w-xs">
+                            <option value="">Provider default</option>
+                            @foreach (Organization::AI_EFFORTS as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </x-ui.select>
+                    </x-ui.field>
                 </div>
 
                 <x-slot:footer>

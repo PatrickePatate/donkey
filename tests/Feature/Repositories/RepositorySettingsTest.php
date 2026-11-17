@@ -137,3 +137,23 @@ it('warns when kodus-graph is not installed', function () {
         ->test('pages::repositories.index')
         ->assertSee('Code graph unavailable');
 });
+
+it('lets admins, not members, build the graph of every repository at once', function () {
+    Queue::fake([BuildRepositoryGraph::class]);
+    config(['graph.enabled' => true]);
+    Cache::put('kodus-graph:available', true);
+    [$admin, $organization] = userInOrganization(OrganizationRole::Admin);
+    repositoryFor($organization);
+    repositoryFor($organization);
+    repositoryFor(userInOrganization()[1]);
+
+    Livewire::actingAs($admin)->test('pages::repositories.index')->assertSee('Build all graphs')->call('buildAllGraphs');
+
+    Queue::assertPushed(BuildRepositoryGraph::class, 2);
+
+    [$member] = userInOrganization();
+    $organization->addMember($member, OrganizationRole::Member);
+    $member->switchOrganization($organization);
+
+    Livewire::actingAs($member->fresh())->test('pages::repositories.index')->assertDontSee('Build all graphs')->call('buildAllGraphs')->assertForbidden();
+});

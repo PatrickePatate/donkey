@@ -2,15 +2,17 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\HasEffort;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
 
 /**
  * Answers questions asked to the bot on a pull request, in the PR conversation or in a finding's thread.
  */
-class PullRequestAssistant implements Agent
+class PullRequestAssistant implements Agent, HasProviderOptions
 {
-    use Promptable;
+    use HasEffort, Promptable;
 
     public function __construct(public string $handle = 'donkey') {}
 

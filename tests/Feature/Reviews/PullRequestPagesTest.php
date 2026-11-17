@@ -1,11 +1,13 @@
 <?php
 
+use App\Enums\AiFeature;
 use App\Enums\FindingStatus;
 use App\Enums\OrganizationRole;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
 use App\Jobs\ReviewPullRequest;
+use App\Models\AiUsage;
 use App\Models\GithubInstallation;
 use App\Models\PullRequest;
 use App\Models\Repository;
@@ -151,4 +153,36 @@ it('shows the structural impact and verifier notes of a review', function () {
         ->set('findingStatus', 'rejected')
         ->assertSee('Imaginary race condition')
         ->assertSee('No shared state is touched.');
+});
+
+it('shows the estimated cost of the calls a review made', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+    $run = ReviewRun::factory()->completed()->for($pullRequest)->create();
+    $otherRun = ReviewRun::factory()->completed()->for($pullRequest)->create();
+    $usage = ['organization_id' => $organization->id, 'pull_request_id' => $pullRequest->id];
+    AiUsage::factory()->create([...$usage, 'review_run_id' => $run->id, 'cost_micros' => 1_200_000]);
+    AiUsage::factory()->create([...$usage, 'review_run_id' => $run->id, 'feature' => AiFeature::Verification, 'cost_micros' => 300_000]);
+    AiUsage::factory()->create([...$usage, 'review_run_id' => $otherRun->id, 'cost_micros' => 7_000_000]);
+    AiUsage::factory()->create([...$usage, 'feature' => AiFeature::Conversation, 'cost_micros' => 5_000_000]);
+
+    expect($run->estimatedCostMicros())->toBe(1_500_000);
+
+    Livewire::actingAs($user)->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
+        ->call('selectRun', $run->id)
+        ->assertSee('Estimated cost')
+        ->assertSee('$1.50');
+});
+
+it('shows tool calls in the live log with their tool, arguments and outcome', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+    $run = ReviewRun::factory()->for($pullRequest)->create(['status' => ReviewRunStatus::Running, 'stage' => ReviewStage::Analyzing]);
+    $run->log('Asking claude-sonnet-5-5 about part 1 of 1 (2 files)');
+    $run->log('search_code "->charge(" in app/ → 3 matches', 'tool');
+
+    $this->actingAs($user)
+        ->get(route('pull-requests.show', $pullRequest))
+        ->assertOk()
+        ->assertSeeInOrder(['Asking claude-sonnet-5-5', 'search_code', '&quot;-&gt;charge(&quot; in app/', '→ 3 matches'], false);
 });

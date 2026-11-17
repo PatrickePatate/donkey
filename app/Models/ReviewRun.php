@@ -127,6 +127,22 @@ class ReviewRun extends Model
         return $this->hasMany(ReviewFinding::class);
     }
 
+    /**
+     * @return HasMany<AiUsage, $this>
+     */
+    public function aiUsages(): HasMany
+    {
+        return $this->hasMany(AiUsage::class);
+    }
+
+    /**
+     * Estimated cost in millionths of a dollar of the AI calls this run made. Dry runs are not metered.
+     */
+    public function estimatedCostMicros(): int
+    {
+        return (int) $this->aiUsages()->sum('cost_micros');
+    }
+
     public function durationInSeconds(): ?int
     {
         if ($this->started_at === null || $this->completed_at === null) {

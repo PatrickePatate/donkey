@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * @property int $id
@@ -29,9 +30,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ?string $eco_model
  * @property ?string $verifier_model
  * @property ?string $conversation_model
+ * @property ?string $ai_effort
+ * @property ?string $avatar_path
  */
 #[Hidden(['ai_api_key'])]
-#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_enabled', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model'])]
+#[Fillable(['name', 'slug', 'risk_threshold', 'auto_review_default', 'eco_mode', 'bot_handle', 'monthly_budget_cents', 'auto_join_domains', 'auto_join_enabled', 'auto_join_role', 'ai_provider', 'ai_api_key', 'review_model', 'eco_model', 'verifier_model', 'conversation_model', 'ai_effort', 'avatar_path'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -49,6 +52,21 @@ class Organization extends Model
             'auto_join_role' => OrganizationRole::class,
             'ai_api_key' => 'encrypted',
         ];
+    }
+
+    /**
+     * Reasoning effort levels the settings accept; empty means the provider default.
+     */
+    public const AI_EFFORTS = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High'];
+
+    public function initials(): string
+    {
+        return mb_strtoupper(mb_substr($this->name, 0, 1));
+    }
+
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null;
     }
 
     public function aiProvider(): string

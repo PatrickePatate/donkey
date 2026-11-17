@@ -6,6 +6,7 @@ use App\Models\GithubInstallation;
 use App\Models\PullRequest;
 use App\Models\Repository;
 use App\Models\ReviewRun;
+use App\Services\Graph\GraphContext;
 use App\Services\Graph\GraphContextProvider;
 use App\Services\Review\FilePatch;
 use App\Services\Review\ReviewContext;
@@ -37,6 +38,17 @@ const CONTEXT_JSON = [
         'risk' => ['level' => 'MEDIUM', 'score' => 0.57],
     ],
 ];
+
+const CONTEXT_XML = <<<'XML'
+<CallGraph>
+  <!-- Static analysis of this repo at one commit. -->
+  <Summary changedFunctions="1" riskLevel="MEDIUM" riskScore="0.57" />
+  <ChangedFunction name="AuthService.verifyToken" file="src/auth.ts" lines="16-18" />
+  <Imports count="1">
+    <Import source="src/api.ts" target="src/auth.ts" />
+  </Imports>
+</CallGraph>
+XML;
 
 beforeEach(function () {
     configureGitHubApp();
@@ -73,9 +85,9 @@ afterEach(function () {
 /**
  * Fake git and kodus-graph, writing the files the real CLI would produce.
  */
-function fakeGraphProcesses(bool $available = true): void
+function fakeGraphProcesses(bool $available = true, array $baseGraph = ['nodes' => [], 'edges' => []], array $contextJson = CONTEXT_JSON): void
 {
-    Process::fake(function (PendingProcess $process) use ($available) {
+    Process::fake(function (PendingProcess $process) use ($available, $baseGraph, $contextJson) {
         $command = $process->command;
 
         if ($command[0] === 'kodus-graph') {
@@ -86,9 +98,9 @@ function fakeGraphProcesses(bool $available = true): void
             $out = $command[array_search('--out', $command, true) + 1] ?? null;
 
             match ($command[1]) {
-                'parse' => File::put($out, json_encode(['metadata' => ['total_nodes' => 120, 'total_edges' => 340, 'files_parsed' => 18], 'nodes' => [], 'edges' => []])),
+                'parse' => File::put($out, json_encode(['metadata' => ['total_nodes' => 120, 'total_edges' => 340, 'files_parsed' => 18], ...$baseGraph])),
                 'update' => File::put($out, json_encode(['metadata' => ['total_nodes' => 121, 'total_edges' => 341, 'files_parsed' => 18], 'nodes' => [], 'edges' => []])),
-                'context' => File::put($out, in_array('json', $command, true) ? json_encode(CONTEXT_JSON) : "1 changed (1 untested) | 5 impacted | 3 files | risk MEDIUM 0.57\nCHANGED:\n  verifyToken …"),
+                'context' => File::put($out, in_array('json', $command, true) ? json_encode($contextJson) : CONTEXT_XML),
                 default => null,
             };
 
@@ -113,7 +125,9 @@ it('builds the base graph, checks out the head and returns structured context', 
         ->and($result->context->riskScore)->toBe(57)
         ->and($result->context->testGaps)->toBe(1)
         ->and($result->context->impactedFunctions)->toBe(5)
-        ->and($result->context->prompt)->toContain('risk MEDIUM 0.57')
+        ->and($result->context->prompt)->toContain('<ChangedFunction name="AuthService.verifyToken"')
+        ->and($result->context->prompt)->not->toContain('<Imports')
+        ->and($result->context->prompt)->not->toContain('<!--')
         ->and($result->context->changedFunctions[0]->callers)->toBe(2)
         ->and($result->context->summary()['changed_functions'][0]['contract'][0]['new'])->toBe('(token: string, opts: VerifyOpts)');
 
@@ -127,8 +141,50 @@ it('builds the base graph, checks out the head and returns structured context', 
     Process::assertRan(fn (PendingProcess $process) => $process->command === ['git', 'fetch', '--quiet', '--depth=1', '--no-tags', '--no-recurse-submodules', 'origin', str_repeat('b', 40)]);
     Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'fetch' && end($process->command) === str_repeat('a', 40));
     Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'context'
+        && in_array('xml', $process->command, true)
         && in_array('src/auth.ts', $process->command, true)
         && in_array($graph->path, $process->command, true));
+});
+
+it('lists removed symbols that surviving code still uses', function () {
+    $node = fn (string $file, string $name): array => ['kind' => 'Method', 'name' => $name, 'qualified_name' => "{$file}::{$name}", 'file_path' => $file, 'line_start' => 4];
+    $call = fn (string $from, string $to): array => ['kind' => 'CALLS', 'source_qualified' => $from, 'target_qualified' => $to];
+    fakeGraphProcesses(baseGraph: [
+        'nodes' => [$node('src/legacy.ts', 'hash'), $node('src/legacy.ts', 'salt'), $node('src/api.ts', 'login'), $node('src/auth.ts', 'verify'), $node('src/legacy.ts', 'unused')],
+        'edges' => [$call('src/api.ts::login', 'src/legacy.ts::hash'), $call('src/auth.ts::verify', 'src/legacy.ts::hash'), $call('src/legacy.ts::salt', 'src/legacy.ts::hash')],
+    ], contextJson: ['analysis' => [...CONTEXT_JSON['analysis'], 'structural_diff' => ['nodes' => ['removed' => [
+        ['qualified_name' => 'src/legacy.ts::hash', 'file_path' => 'src/legacy.ts'],
+        ['qualified_name' => 'src/legacy.ts::unused', 'file_path' => 'src/legacy.ts'],
+    ]]]]]);
+    $context = new ReviewContext(str_repeat('b', 40), false, $this->context->files, [], [], removedFiles: ['src/legacy.ts']);
+
+    $result = app(GraphContextProvider::class)->forReview($this->run, $context);
+
+    expect($result->context->prompt)->toStartWith(<<<'XML'
+        <RemovedSymbols>
+          <Removed name="hash" file="src/legacy.ts">
+            <StillUsedBy name="login" file="src/api.ts" line="4" via="CALLS" />
+            <StillUsedBy name="verify" file="src/auth.ts" line="4" via="CALLS" fileChangedInPullRequest="true" />
+          </Removed>
+        </RemovedSymbols>
+        XML)
+        ->and($result->baseGraph->is($this->repository->graphs()->sole()))->toBeTrue();
+    Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'context' && in_array('src/legacy.ts', $process->command, true));
+});
+
+it('keeps only the changed functions of the given files in a chunk prompt', function () {
+    $graph = new GraphContext(<<<'XML'
+        <CallGraph>
+          <Summary changedFunctions="2" />
+          <ChangedFunction name="a" file="src/a.ts" lines="1-2">
+            <Callers count="1" />
+          </ChangedFunction>
+          <ChangedFunction name="b" file="src/b&amp;c.ts" lines="1-2" />
+        </CallGraph>
+        XML, null, null, [], 0, 0, 0, 0);
+
+    expect($graph->promptFor(['src/b&c.ts']))->toBe("<CallGraph>\n  <Summary changedFunctions=\"2\" />\n  <ChangedFunction name=\"b\" file=\"src/b&amp;c.ts\" lines=\"1-2\" />\n</CallGraph>")
+        ->and($graph->promptFor(['src/a.ts']))->toContain('<Callers count="1" />')->not->toContain('name="b"');
 });
 
 it('never passes changed file names that look like flags to kodus-graph', function () {
@@ -186,6 +242,15 @@ it('reports unavailable when kodus-graph is not installed', function () {
 
     expect($result->status)->toBe(RunGraphStatus::Unavailable)
         ->and($result->context)->toBeNull();
+    Process::assertDidntRun(fn (PendingProcess $process) => $process->command[0] === 'git');
+});
+
+it('reports unavailable when the binary exits successfully without printing a version', function () {
+    Process::fake(['*' => Process::result('')]);
+
+    $result = app(GraphContextProvider::class)->forReview($this->run, $this->context);
+
+    expect($result->status)->toBe(RunGraphStatus::Unavailable);
     Process::assertDidntRun(fn (PendingProcess $process) => $process->command[0] === 'git');
 });
 

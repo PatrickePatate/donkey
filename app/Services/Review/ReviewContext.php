@@ -12,6 +12,7 @@ final class ReviewContext
      * @param  array<string, string>  $instructions  Instruction file path => content.
      * @param  list<string>  $skippedFiles  Paths left out (ignored, binary or over the limits).
      * @param  ?string  $documentation  The repository guide, if enabled and available.
+     * @param  list<string>  $removedFiles  Deleted files: never reviewed, but the code graph checks what still uses them.
      */
     public function __construct(
         public readonly string $baseSha,
@@ -20,6 +21,7 @@ final class ReviewContext
         public readonly array $instructions,
         public readonly array $skippedFiles,
         public readonly ?string $documentation = null,
+        public readonly array $removedFiles = [],
     ) {}
 
     /**
@@ -36,6 +38,7 @@ final class ReviewContext
             instructions: $this->instructions,
             skippedFiles: $this->skippedFiles,
             documentation: $this->documentation,
+            removedFiles: $this->removedFiles,
         );
     }
 

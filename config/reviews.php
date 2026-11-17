@@ -96,6 +96,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Review tools
+    |--------------------------------------------------------------------------
+    |
+    | When the code graph is ready, the reviewer and the verifier can read
+    | files, search the code and query the graph at the pull request head.
+    | max_steps bounds each call: every step sends the conversation again.
+    |
+    */
+
+    'tools' => [
+        'enabled' => (bool) env('REVIEW_TOOLS_ENABLED', true),
+        'max_steps' => (int) env('REVIEW_TOOLS_MAX_STEPS', 8),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Graph impact boost
     |--------------------------------------------------------------------------
     |

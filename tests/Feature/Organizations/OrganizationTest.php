@@ -3,6 +3,8 @@
 use App\Enums\OrganizationRole;
 use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 it('redirects users without an organization to onboarding', function () {
@@ -76,4 +78,28 @@ it('forbids members from updating organization settings', function () {
         ->set('riskThreshold', 10)
         ->call('save')
         ->assertForbidden();
+});
+
+it('lets admins upload, replace and remove the organization avatar, but not members', function () {
+    Storage::fake('public');
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')
+        ->set('avatar', UploadedFile::fake()->create('notes.pdf', 10, 'application/pdf'))
+        ->assertHasErrors('avatar');
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')->set('avatar', UploadedFile::fake()->image('a.png'))->assertHasNoErrors();
+    $first = $organization->fresh()->avatar_path;
+    Storage::disk('public')->assertExists($first);
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')->set('avatar', UploadedFile::fake()->image('b.png'));
+    Storage::disk('public')->assertMissing($first);
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')->call('removeAvatar');
+    expect($organization->fresh()->avatar_path)->toBeNull();
+
+    [$member] = userInOrganization();
+    $organization->addMember($member, OrganizationRole::Member);
+    $member->switchOrganization($organization);
+    Livewire::actingAs($member->fresh())->test('pages::settings.organization')->set('avatar', UploadedFile::fake()->image('c.png'))->assertForbidden();
 });

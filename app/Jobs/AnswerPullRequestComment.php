@@ -58,7 +58,7 @@ class AnswerPullRequestComment implements ShouldQueue
         }
 
         try {
-            $response = PullRequestAssistant::make(handle: $handle)->prompt(
+            $response = PullRequestAssistant::make(handle: $handle)->withEffort($organization->ai_effort)->prompt(
                 $prompts->build($question),
                 provider: $ai->provider($organization),
                 model: $organization->modelFor('conversation'),

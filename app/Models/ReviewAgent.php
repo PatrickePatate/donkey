@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
  * @property ?string $description
  * @property string $instructions
  * @property ?string $model
+ * @property ?string $effort
  * @property ?list<string> $file_globs
  * @property ?list<string> $categories
  * @property ?FindingSeverity $severity_floor
@@ -32,7 +33,7 @@ use Illuminate\Support\Str;
  * @property-read Organization $organization
  * @property-read ?Repository $repository
  */
-#[Fillable(['organization_id', 'repository_id', 'slug', 'name', 'description', 'instructions', 'model', 'file_globs', 'categories', 'severity_floor', 'run_on_auto_review', 'enabled'])]
+#[Fillable(['organization_id', 'repository_id', 'slug', 'name', 'description', 'instructions', 'model', 'effort', 'file_globs', 'categories', 'severity_floor', 'run_on_auto_review', 'enabled'])]
 class ReviewAgent extends Model
 {
     /** @use HasFactory<ReviewAgentFactory> */

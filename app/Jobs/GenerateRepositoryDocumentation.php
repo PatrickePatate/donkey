@@ -69,7 +69,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
             $tree = $client->tree($repository, $sha);
             $prompt = $this->prompt($repository, $sha, $tree, $existing?->content, $client);
             $model = $repository->organization->modelFor('review');
-            $response = RepositoryDocumenter::make()->prompt(
+            $response = RepositoryDocumenter::make()->withEffort($repository->organization->ai_effort)->prompt(
                 $prompt,
                 provider: $ai->provider($repository->organization),
                 model: $model,

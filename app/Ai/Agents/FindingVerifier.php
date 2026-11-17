@@ -2,18 +2,20 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\HasEffort;
 use App\Enums\FindingSeverity;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 
 /**
  * Independent second opinion on review findings before they are posted.
  */
-class FindingVerifier implements Agent, HasStructuredOutput
+class FindingVerifier implements Agent, HasProviderOptions, HasStructuredOutput
 {
-    use Promptable;
+    use HasEffort, Promptable;
 
     public function instructions(): string
     {

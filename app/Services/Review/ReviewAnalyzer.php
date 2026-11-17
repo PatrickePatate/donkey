@@ -43,7 +43,7 @@ class ReviewAnalyzer
         foreach ($chunks as $number => $chunk) {
             $model = $this->models->reviewModel($routingOrganization, $agent, $chunk, $graph);
             $log !== null && $log(($agent !== null ? "{$agent->name}: " : '').'Asking '.$model.' about part '.($number + 1).' of '.count($chunks).' ('.count($chunk).' files)');
-            $response = CodeReviewer::make(agent: $agent)->prompt(
+            $response = CodeReviewer::make(agent: $agent)->withEffort($agent?->effort ?: $aiOrganization->ai_effort)->prompt(
                 $this->prompt($pullRequest, $context, $chunk, $graph, $knowledge),
                 provider: $this->ai->provider($aiOrganization),
                 model: $model,

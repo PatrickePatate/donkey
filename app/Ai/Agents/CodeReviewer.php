@@ -2,20 +2,22 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\HasEffort;
 use App\Enums\FindingCategory;
 use App\Enums\FindingSeverity;
 use App\Models\ReviewAgent;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 
 /**
  * Reviews a chunk of a pull request diff and reports concrete, line-anchored findings.
  */
-class CodeReviewer implements Agent, HasStructuredOutput
+class CodeReviewer implements Agent, HasProviderOptions, HasStructuredOutput
 {
-    use Promptable;
+    use HasEffort, Promptable;
 
     /**
      * @param  ?ReviewAgent  $agent  Turns the reviewer into this specialist, with the organization's own instructions.

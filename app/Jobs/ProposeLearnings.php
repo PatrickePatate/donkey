@@ -88,7 +88,7 @@ class ProposeLearnings implements ShouldBeUnique, ShouldQueue
             ->limit(60)
             ->get();
 
-        $response = LearningSynthesizer::make()->prompt(
+        $response = LearningSynthesizer::make()->withEffort($repository->organization->ai_effort)->prompt(
             $this->prompt($signals, $existing),
             provider: $ai->provider($repository->organization),
             model: $repository->organization->modelFor('review'),

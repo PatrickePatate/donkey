@@ -31,6 +31,8 @@ new class extends Component
 
     public string $model = '';
 
+    public string $effort = '';
+
     public string $repositoryId = '';
 
     public string $fileGlobs = '';
@@ -59,6 +61,7 @@ new class extends Component
                 'description' => (string) $agent->description,
                 'instructions' => $agent->instructions,
                 'model' => (string) $agent->model,
+                'effort' => (string) $agent->effort,
                 'repositoryId' => (string) $agent->repository_id,
                 'fileGlobs' => implode("\n", $agent->file_globs ?? []),
                 'categories' => $agent->categories ?? [],
@@ -176,6 +179,7 @@ new class extends Component
             'description' => ['nullable', 'string', 'max:160'],
             'instructions' => ['required', 'string', 'min:20', 'max:8000'],
             'model' => ['nullable', 'string', 'max:100'],
+            'effort' => ['nullable', Rule::in(array_keys(App\Models\Organization::AI_EFFORTS))],
             'repositoryId' => ['nullable', Rule::exists('repositories', 'id')->where('organization_id', $this->organization->id)],
             'fileGlobs' => ['nullable', 'string', 'max:2000'],
             'categories' => ['array'],
@@ -193,6 +197,7 @@ new class extends Component
             'description' => filled($validated['description']) ? $validated['description'] : null,
             'instructions' => trim($validated['instructions']),
             'model' => filled($validated['model']) ? trim($validated['model']) : null,
+            'effort' => filled($validated['effort']) ? $validated['effort'] : null,
             'repository_id' => filled($validated['repositoryId']) ? (int) $validated['repositoryId'] : null,
             'file_globs' => $this->parsedGlobs(),
             'categories' => array_values($validated['categories']) ?: null,
@@ -203,7 +208,7 @@ new class extends Component
 
         if ($this->agent !== null) {
             $this->agent->update($attributes);
-            app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'agent.updated', $this->agent, App\Services\Audit\AuditLog::changes($this->agent, ['name', 'slug', 'instructions', 'model', 'repository_id', 'file_globs', 'categories', 'severity_floor', 'run_on_auto_review', 'enabled']));
+            app(\App\Services\Audit\AuditLog::class)->record($this->organization, 'agent.updated', $this->agent, App\Services\Audit\AuditLog::changes($this->agent, ['name', 'slug', 'instructions', 'model', 'effort', 'repository_id', 'file_globs', 'categories', 'severity_floor', 'run_on_auto_review', 'enabled']));
             $this->dispatch('toast', message: 'Agent saved.', variant: 'success');
 
             return;
@@ -351,6 +356,15 @@ new class extends Component
 
                         <x-ui.field label="Model" for="model" error="model" :hint="'Leave empty to use '.config('reviews.model').'.'">
                             <x-ui.input id="model" wire:model="model" class="font-mono" :placeholder="config('reviews.model')" />
+                        </x-ui.field>
+
+                        <x-ui.field label="Reasoning effort" for="effort" error="effort" hint="Leave on the organization setting unless this agent needs deeper or faster reviews.">
+                            <x-ui.select id="effort" wire:model="effort">
+                                <option value="">Organization setting</option>
+                                @foreach (App\Models\Organization::AI_EFFORTS as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </x-ui.select>
                         </x-ui.field>
                     </div>
                 </div>

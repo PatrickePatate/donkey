@@ -38,7 +38,7 @@ class FindingVerifierService
         $model = $this->models->verifierModel($organization, $findings);
 
         try {
-            $response = FindingVerifier::make()->prompt(
+            $response = FindingVerifier::make()->withEffort($organization->ai_effort)->prompt(
                 $this->prompt($run, $findings, $knowledge),
                 provider: $this->ai->provider($organization),
                 model: $model,

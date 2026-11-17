@@ -2,15 +2,17 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\HasEffort;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
 
 /**
  * Creates a concise, maintainable architecture guide from a repository snapshot.
  */
-class RepositoryDocumenter implements Agent
+class RepositoryDocumenter implements Agent, HasProviderOptions
 {
-    use Promptable;
+    use HasEffort, Promptable;
 
     public function instructions(): string
     {

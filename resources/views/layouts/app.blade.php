@@ -25,6 +25,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     @include('partials.head')
+    <link rel="icon" href="{{ asset('favicon.png') }}" type="image/png">
 </head>
 <body class="min-h-svh" @if ($organization) data-organization-id="{{ $organization->id }}" @endif>
     <div x-data="{ sidebarOpen: false }" class="flex min-h-svh">

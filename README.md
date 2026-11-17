@@ -92,6 +92,44 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
 
 To upgrade, run `./deploy.sh` again (or `git pull` and the same `up -d --build` command when building on the server); migrations run again. Data lives in the `pgsql-data`, `redis-data` and `storage` volumes. Logs go to `docker compose logs`.
 
+#### Backups
+
+`php artisan backup:run` writes `storage/backups/donkey-<date>.tar.gz` with a `pg_dump` of the database and the files that cannot be rebuilt: `storage/app` (organization avatars, the GitHub App key, `generated.env` holding the generated `APP_KEY` and Reverb keys) and the MCP OAuth keys. The scheduler runs it every night at 01:30 in production and keeps the last 7 (`--keep=N` to change). Redis is not backed up: it only holds queues, cache and sessions, so the worst a loss costs is in-flight jobs and a new sign-in.
+
+The archive contains secrets and sits in the same `storage` volume as the data, so keep a copy off the server. To have each backup also uploaded to S3 (or any S3-compatible storage: R2, Scaleway, MinIO…) under `backups/`, with the same retention, add to `.env`:
+
+```dotenv
+BACKUP_DISK=s3
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=
+AWS_BUCKET=
+# AWS_ENDPOINT=https://...           # S3-compatible providers
+# AWS_USE_PATH_STYLE_ENDPOINT=true   # MinIO and some others
+```
+
+Use a private bucket, ideally with versioning or object lock, and a key that can only read, write and delete in it. Without S3, download the latest archive yourself (or `rsync`/`restic` the directory):
+
+```bash
+docker compose exec -T app sh -c 'cat storage/backups/$(ls storage/backups | tail -1)' > donkey-backup.tar.gz
+```
+
+**Keep `APP_KEY`.** Organization AI API keys are encrypted with it. If you set `APP_KEY` in `.env` instead of letting Donkey generate it, it is not in the archive (the command warns): back up `.env` too, or the AI keys are lost on restore.
+
+To restore, on the same or a fresh install (started once with `docker compose up -d`, same `.env`):
+
+```bash
+# with BACKUP_DISK set, the file name is enough: it is downloaded from the bucket
+docker compose exec app php artisan backup:restore donkey-<date>.tar.gz
+
+# otherwise, copy the archive in first
+docker compose exec -T app sh -c 'mkdir -p storage/backups && cat > storage/backups/restore.tar.gz' < donkey-backup.tar.gz
+docker compose exec app php artisan backup:restore restore.tar.gz
+docker compose restart
+```
+
+This replaces the database and the saved files, then the restart loads the restored keys. The GitHub App key mounted from the host (`github-app.pem`) is left as is.
+
 ### Install for development
 
 ### 1. Get the code and the services

@@ -28,6 +28,12 @@ return [
     |
     */
 
+    /*
+    | Disk that backup:run also copies each backup to (e.g. "s3"), under backups/. Empty keeps them on the server only.
+    */
+
+    'backup_disk' => env('BACKUP_DISK'),
+
     'disks' => [
 
         'local' => [

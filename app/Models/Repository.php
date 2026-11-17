@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['organization_id', 'github_installation_id', 'github_id', 'full_name', 'default_branch', 'is_private', 'auto_review_enabled', 'auto_docs_enabled', 'risk_threshold', 'dependencies_scanned_at', 'dependencies_commit_sha', 'composer_packages_count', 'dependencies_scan_error'])]
+#[Fillable(['organization_id', 'github_installation_id', 'github_id', 'full_name', 'default_branch', 'is_private', 'auto_review_enabled', 'auto_docs_enabled', 'risk_threshold', 'dependencies_scanned_at', 'dependencies_commit_sha', 'composer_packages_count', 'dependencies_scan_error', 'security_branch'])]
 class Repository extends Model
 {
     /** @use HasFactory<RepositoryFactory> */
@@ -27,6 +27,14 @@ class Repository extends Model
             'dependencies_scanned_at' => 'datetime',
             'composer_packages_count' => 'integer',
         ];
+    }
+
+    /**
+     * The branch whose composer.lock the security scan checks.
+     */
+    public function securityBranch(): string
+    {
+        return $this->security_branch ?: $this->default_branch;
     }
 
     /**

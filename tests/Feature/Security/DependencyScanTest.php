@@ -139,3 +139,36 @@ it('summarizes the affected projects and packages on the dashboard', function ()
             ['package' => 'acme/mail', 'severity' => 'medium', 'repositories' => 1],
         ]);
 });
+
+it('scans the configured branch instead of the default one', function () {
+    $this->repository->update(['security_branch' => 'production']);
+    fakeDependencyScan($this->repository, composerLock());
+
+    scanDependencies($this->repository);
+
+    Http::assertSent(fn ($request) => str_ends_with(parse_url($request->url(), PHP_URL_PATH), '/commits/production'));
+});
+
+it('lets admins pick the monitored branch once it exists on GitHub', function () {
+    Queue::fake();
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $repository = Repository::factory()->for(GithubInstallation::factory()->for($organization), 'installation')->create(['organization_id' => $organization->id]);
+    configureGitHubApp();
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'installation-token'], 201),
+        '*/commits/production' => Http::response(['sha' => str_repeat('p', 40)]),
+        '*/commits/*' => Http::response(['message' => 'No commit found'], 422),
+    ]);
+
+    $page = Livewire::actingAs($owner)->test('pages::security.index', ['repository' => $repository->id]);
+
+    $page->set('securityBranch', 'nope')->call('saveSecurityBranch')->assertHasErrors('securityBranch');
+    expect($repository->fresh()->security_branch)->toBeNull();
+
+    $page->set('securityBranch', 'production')->call('saveSecurityBranch')->assertHasNoErrors();
+    expect($repository->fresh()->securityBranch())->toBe('production');
+    Queue::assertPushed(ScanRepositoryDependencies::class);
+
+    $page->set('securityBranch', '')->call('saveSecurityBranch');
+    expect($repository->fresh()->securityBranch())->toBe('main');
+});

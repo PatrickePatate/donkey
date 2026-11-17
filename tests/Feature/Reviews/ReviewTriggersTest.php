@@ -193,6 +193,22 @@ it('pre-builds the base graph when a pull request is merged into the default bra
     Queue::assertPushed(ScanRepositoryDependencies::class, fn (ScanRepositoryDependencies $job) => $job->repository->is($this->repository));
 });
 
+it('checks the dependencies when a pull request is merged into the monitored branch', function () {
+    Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class, ScanRepositoryDependencies::class]);
+    $this->repository->update(['security_branch' => 'production']);
+
+    processEvent('pull_request', 'closed', $this->installation, [
+        'repository' => ['id' => $this->repository->github_id],
+        'pull_request' => pullRequestPayload($this->repository, [
+            'state' => 'closed',
+            'merged_at' => now()->toIso8601String(),
+            'merge_commit_sha' => str_repeat('m', 40),
+        ]),
+    ]);
+
+    Queue::assertNotPushed(ScanRepositoryDependencies::class);
+});
+
 it('does not build graphs for pull requests closed without merging', function () {
     Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class]);
 

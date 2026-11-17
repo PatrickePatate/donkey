@@ -5,6 +5,8 @@ use App\Jobs\ScanRepositoryDependencies;
 use App\Models\Organization;
 use App\Models\Repository;
 use App\Models\SecurityAdvisory;
+use App\Services\Audit\AuditLog;
+use App\Services\GitHub\PullRequestClient;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -24,6 +26,8 @@ new #[Title('Security')] class extends Component
 
     public bool $embedded = false;
 
+    public string $securityBranch = '';
+
     #[Url(except: '')]
     public string $severity = '';
 
@@ -33,6 +37,7 @@ new #[Title('Security')] class extends Component
     public function mount(?int $repository = null): void
     {
         $this->repositoryId = $repository;
+        $this->securityBranch = (string) $this->repositories->first()?->security_branch;
     }
 
     public function updatedSeverity(): void
@@ -129,6 +134,36 @@ new #[Title('Security')] class extends Component
             ->paginate(25);
     }
 
+    public function saveSecurityBranch(PullRequestClient $client): void
+    {
+        $repository = $this->repositories->sole();
+        Gate::authorize('update', $repository);
+
+        $this->validate(['securityBranch' => ['nullable', 'string', 'max:255', 'not_regex:/\\s|\\.\\.|^-/']]);
+        $branch = trim($this->securityBranch);
+
+        if ($branch !== '' && $branch !== $repository->default_branch) {
+            try {
+                $client->branchHead($repository, $branch);
+            } catch (\Throwable) {
+                $this->addError('securityBranch', "Couldn't find the branch {$branch} on GitHub.");
+
+                return;
+            }
+        }
+
+        $repository->update(['security_branch' => $branch === '' || $branch === $repository->default_branch ? null : $branch]);
+
+        if ($repository->wasChanged('security_branch')) {
+            app(AuditLog::class)->record($this->organization, 'repository.security_branch_changed', $repository, AuditLog::changes($repository, ['security_branch']));
+            ScanRepositoryDependencies::dispatch($repository);
+        }
+
+        $this->securityBranch = (string) $repository->security_branch;
+        unset($this->repositories);
+        $this->dispatch('toast', message: "Monitoring {$repository->securityBranch()}. Checking it now…", variant: 'success');
+    }
+
     public function scan(): void
     {
         foreach ($this->repositories as $repository) {
@@ -159,7 +194,11 @@ new #[Title('Security')] class extends Component
                 <h1 class="text-2xl font-semibold tracking-tight">Security</h1>
             @endunless
             <p class="text-sm text-muted-foreground">
-                Known vulnerabilities in the Composer packages locked on each default branch, from the Packagist security advisories.
+                @if ($repositoryId && $this->repositories->first())
+                    Known vulnerabilities in the Composer packages locked on <code>{{ $this->repositories->first()->securityBranch() }}</code>, from the Packagist security advisories.
+                @else
+                    Known vulnerabilities in the Composer packages locked on each repository's monitored branch, from the Packagist security advisories.
+                @endif
                 Checked daily and after each merge.
                 @if ($lastScan)
                     Last check {{ $lastScan->diffForHumans() }}.
@@ -175,6 +214,15 @@ new #[Title('Security')] class extends Component
             </x-ui.button>
         @endif
     </div>
+
+    @if ($repositoryId && $canScan)
+        <form wire:submit="saveSecurityBranch" class="flex flex-wrap items-start gap-2">
+            <x-ui.field label="Monitored branch" for="securityBranch" error="securityBranch" :hint="'Empty uses the default branch ('.$this->repositories->first()->default_branch.').'" class="w-full max-w-xs">
+                <x-ui.input id="securityBranch" wire:model="securityBranch" class="font-mono" :placeholder="$this->repositories->first()->default_branch" />
+            </x-ui.field>
+            <x-ui.button type="submit" variant="outline" class="sm:mt-6">Save</x-ui.button>
+        </form>
+    @endif
 
     @if ($failed->isNotEmpty())
         <x-ui.alert title="Some checks failed" variant="destructive">

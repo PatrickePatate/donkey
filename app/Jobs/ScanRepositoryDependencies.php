@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Reads the composer.lock of the default branch and records the Packagist advisories affecting it.
+ * Reads the composer.lock of the monitored branch (the default one unless set) and records the Packagist advisories affecting it.
  */
 class ScanRepositoryDependencies implements ShouldBeUnique, ShouldQueue
 {
@@ -36,7 +36,7 @@ class ScanRepositoryDependencies implements ShouldBeUnique, ShouldQueue
         $repository = $this->repository;
 
         try {
-            $sha = $client->branchHead($repository, $repository->default_branch);
+            $sha = $client->branchHead($repository, $repository->securityBranch());
             $lock = $client->repositoryFileContent($repository, 'composer.lock', $sha);
             $packages = $lock === null ? [] : $packagist->lockedPackages($lock);
             $advisories = $packages === [] ? [] : $packagist->affecting($packages);

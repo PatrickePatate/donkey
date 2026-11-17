@@ -5,8 +5,11 @@ namespace App\Console\Commands;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 /**
  * Writes storage/backups/donkey-<date>.tar.gz holding a pg_dump of the database and the storage files that matter
@@ -59,18 +62,38 @@ class BackupRun extends Command
             $this->warn('APP_KEY comes from your .env and is not in the backup: keep it, the AI API keys are encrypted with it.');
         }
 
-        $this->deleteOldBackups($directory, max(1, (int) $this->option('keep')));
+        $keep = max(1, (int) $this->option('keep'));
+        $this->deleteOldBackups(Storage::build(['driver' => 'local', 'root' => $directory]), '', $keep);
+
+        if ($diskName = config('filesystems.backup_disk')) {
+            $disk = Storage::disk($diskName);
+            $stream = fopen($archive, 'r');
+
+            try {
+                if (!$disk->writeStream('backups/'.basename($archive), $stream)) {
+                    throw new RuntimeException("Could not copy the backup to the {$diskName} disk.");
+                }
+            } finally {
+                fclose($stream);
+            }
+
+            $this->info("Backup copied to the {$diskName} disk.");
+            $this->deleteOldBackups($disk, 'backups', $keep);
+        }
 
         return self::SUCCESS;
     }
 
-    private function deleteOldBackups(string $directory, int $keep): void
+    private function deleteOldBackups(Filesystem $disk, string $directory, int $keep): void
     {
         // Names sort by date, so the oldest come first.
-        $backups = collect(File::glob("{$directory}/donkey-*.tar.gz"))->sort()->values();
+        $backups = collect($disk->files($directory))
+            ->filter(fn (string $path): bool => (bool) preg_match('/^donkey-.*\.tar\.gz$/', basename($path)))
+            ->sort()
+            ->values();
 
-        $backups->slice(0, max(0, $backups->count() - $keep))->each(function (string $path): void {
-            File::delete($path);
+        $backups->slice(0, max(0, $backups->count() - $keep))->each(function (string $path) use ($disk): void {
+            $disk->delete($path);
             $this->line('Deleted old backup '.basename($path).'.');
         });
     }

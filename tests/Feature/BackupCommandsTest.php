@@ -3,6 +3,7 @@
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
     $this->storage = sys_get_temp_dir().'/donkey-backup-test-'.uniqid();
@@ -82,4 +83,35 @@ test('restore refuses a missing backup', function () {
     $this->artisan('backup:restore', ['file' => 'nope.tar.gz', '--force' => true])->assertFailed();
 
     Process::assertNothingRan();
+});
+
+test('backup copies the archive to the backup disk and prunes it there too', function () {
+    Process::fake(function (PendingProcess $process) {
+        if ($process->command[0] === 'tar') {
+            File::put($process->command[2], 'archive');
+        }
+
+        return Process::result();
+    });
+    config(['filesystems.backup_disk' => 's3']);
+    $disk = Storage::fake('s3');
+    $disk->put('backups/donkey-2026-01-01-010000.tar.gz', 'old');
+    $disk->put('backups/notes.txt', 'keep me');
+
+    $this->artisan('backup:run', ['--keep' => 1])->assertSuccessful();
+
+    $files = $disk->files('backups');
+    expect($files)->toHaveCount(2)->toContain('backups/notes.txt')
+        ->and($disk->get(collect($files)->first(fn ($file) => str_starts_with(basename($file), 'donkey-'))))->toBe('archive');
+});
+
+test('restore downloads a backup that is only on the backup disk', function () {
+    config(['filesystems.backup_disk' => 's3']);
+    Storage::fake('s3')->put('backups/donkey-2026-01-01-010000.tar.gz', 'archive');
+    Process::fake();
+
+    $this->artisan('backup:restore', ['file' => 'donkey-2026-01-01-010000.tar.gz', '--force' => true])->assertSuccessful();
+
+    Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'tar'
+        && file_get_contents($process->command[2]) === 'archive');
 });

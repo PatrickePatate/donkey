@@ -7,13 +7,14 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Finder\SplFileInfo;
 
 /**
  * Restores an archive written by backup:run: replaces the database contents and copies the saved storage files back.
  */
 #[Signature('backup:restore
-    {file : Path to a donkey-*.tar.gz backup (or its name in storage/backups)}
+    {file : Path to a donkey-*.tar.gz backup, or its name in storage/backups or on the backup disk}
     {--force : Do not ask for confirmation}')]
 #[Description('Restore the database and storage files from a backup made by backup:run')]
 class BackupRestore extends Command
@@ -24,6 +25,10 @@ class BackupRestore extends Command
 
         if (!is_file($archive)) {
             $archive = storage_path('backups/'.basename($archive));
+        }
+
+        if (!is_file($archive)) {
+            $this->downloadFromBackupDisk(basename($archive), $archive);
         }
 
         if (!is_file($archive)) {
@@ -58,6 +63,22 @@ class BackupRestore extends Command
         $this->info('Backup restored. Restart Donkey so it picks up the restored keys (docker compose restart).');
 
         return self::SUCCESS;
+    }
+
+    private function downloadFromBackupDisk(string $name, string $target): void
+    {
+        $diskName = config('filesystems.backup_disk');
+
+        if (!$diskName || !Storage::disk($diskName)->exists("backups/{$name}")) {
+            return;
+        }
+
+        $this->line("Downloading {$name} from the {$diskName} disk.");
+        File::ensureDirectoryExists(dirname($target), 0700);
+        $stream = Storage::disk($diskName)->readStream("backups/{$name}");
+        file_put_contents($target, $stream);
+        fclose($stream);
+        chmod($target, 0600);
     }
 
     private function restoreStorageFiles(string $workDirectory): void

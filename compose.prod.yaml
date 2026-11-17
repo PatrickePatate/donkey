@@ -1,14 +1,13 @@
 # Production stack. Images are built by CI (.github/workflows/images.yml) and published to GHCR:
 #   ./deploy.sh [tag]                                                         pull and restart (no build on the server)
 #   docker compose --env-file .env.production -f compose.prod.yaml up -d --build   build locally instead
-# Traefik (external network `web`, entrypoint `websecure`, resolver `lets-encrypt`) terminates TLS and routes DONKEY_HOST to the `web` service.
-# No host port is published: set DONKEY_HOST in .env.production (e.g. donkey.example.com).
+# The `web` service listens on 127.0.0.1:DONKEY_PORT (default 8090): put a TLS-terminating reverse proxy (nginx, Caddy, Traefik...) in front of it.
 
 x-app: &app
   build:
     context: .
     target: app
-  image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
+  image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
   restart: unless-stopped
   env_file: .env.production
   environment:
@@ -32,17 +31,18 @@ services:
     build:
       context: .
       target: web
-    image: ghcr.io/patrickepatate/donkey-web:${DONKEY_TAG:-latest}
+    image: ghcr.io/code16/donkey-web:${DONKEY_TAG:-latest}
     restart: unless-stopped
-    networks: [default, web]
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=web
-      - traefik.http.routers.donkey.rule=Host(`${DONKEY_HOST:?Set DONKEY_HOST in .env.production}`)
-      - traefik.http.routers.donkey.entrypoints=websecure
-      - traefik.http.routers.donkey.tls=true
-      - traefik.http.routers.donkey.tls.certresolver=lets-encrypt
-      - traefik.http.services.donkey.loadbalancer.server.port=80
+    ports:
+      - "127.0.0.1:${DONKEY_PORT:-8090}:80"
+    volumes:
+      # Serves the `public` disk (e.g. organization avatars) without a storage:link symlink.
+      - type: volume
+        source: storage
+        target: /var/www/html/public/storage
+        read_only: true
+        volume:
+          subpath: app/public
     depends_on:
       - app
       - reverb
@@ -67,7 +67,7 @@ services:
     build:
       context: .
       target: app
-    image: ghcr.io/patrickepatate/donkey-app:${DONKEY_TAG:-latest}
+    image: ghcr.io/code16/donkey-app:${DONKEY_TAG:-latest}
     env_file: .env.production
     environment:
       DB_HOST: pgsql
@@ -102,10 +102,6 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
-
-networks:
-  web:
-    external: true
 
 volumes:
   storage:

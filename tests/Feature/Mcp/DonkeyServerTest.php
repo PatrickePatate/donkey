@@ -14,6 +14,7 @@ use App\Models\RepositoryDocument;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Models\User;
+use phpseclib4\Crypt\RSA;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -25,6 +26,10 @@ beforeEach(function () {
 });
 
 it('rejects unauthenticated HTTP requests', function () {
+    // CI has no storage/oauth-*.key files: give the Passport guard throwaway keys.
+    $key = RSA::createKey(2048);
+    config(['passport.private_key' => (string) $key, 'passport.public_key' => (string) $key->getPublicKey()]);
+
     $this->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])->assertUnauthorized();
 });
 

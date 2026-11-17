@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Repository;
+use App\Services\GitHub\PullRequestClient;
 use App\Services\Graph\GraphBuilder;
 use App\Services\Graph\KodusGraph;
 use App\Services\Graph\RepositoryWorkspace;
@@ -13,6 +14,7 @@ use Throwable;
 
 /**
  * Pre-builds a base graph so reviews of the next pull requests don't pay for a full parse.
+ * Without a commit, it builds the current head of the default branch.
  */
 class BuildRepositoryGraph implements ShouldBeUnique, ShouldQueue
 {
@@ -24,24 +26,26 @@ class BuildRepositoryGraph implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 900;
 
-    public function __construct(public Repository $repository, public string $commitSha)
+    public function __construct(public Repository $repository, public ?string $commitSha = null)
     {
         $this->onQueue('graphs');
     }
 
     public function uniqueId(): string
     {
-        return "{$this->repository->id}:{$this->commitSha}";
+        return "{$this->repository->id}:".($this->commitSha ?? 'head');
     }
 
-    public function handle(KodusGraph $kodusGraph, RepositoryWorkspace $workspace, GraphBuilder $builder): void
+    public function handle(KodusGraph $kodusGraph, RepositoryWorkspace $workspace, GraphBuilder $builder, PullRequestClient $client): void
     {
         if (! $kodusGraph->isAvailable()) {
             return;
         }
 
         try {
-            $workspace->locked($this->repository, fn (RepositoryWorkspace $workspace) => $builder->ensure($workspace, $this->repository, $this->commitSha));
+            $sha = $this->commitSha ?? $client->branchHead($this->repository, $this->repository->default_branch);
+
+            $workspace->locked($this->repository, fn (RepositoryWorkspace $workspace) => $builder->ensure($workspace, $this->repository, $sha));
         } catch (Throwable $exception) {
             report($exception);
         }

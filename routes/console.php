@@ -2,6 +2,7 @@
 
 use App\Actions\DecayLearnings;
 use App\Enums\SignalType;
+use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\ProposeLearnings;
 use App\Models\FindingSignal;
 use App\Models\Repository;
@@ -30,6 +31,15 @@ Artisan::command('learnings:decay', function (DecayLearnings $decay) {
 
     $this->info("Decayed {$result['decayed']} idle ".str('learning')->plural($result['decayed']).", archived {$result['archived']}.");
 })->purpose('Lower the weight of learnings that stopped matching, and archive the weakest');
+
+Artisan::command('graphs:build {--organization= : Only the repositories of this organization id}', function () {
+    $repositories = Repository::query()->when($this->option('organization'), fn ($query, $id) => $query->where('organization_id', $id));
+    $count = $repositories->count();
+
+    $repositories->each(fn (Repository $repository) => BuildRepositoryGraph::dispatch($repository));
+
+    $this->info("Queued graph builds for {$count} ".str('repository')->plural($count).'.');
+})->purpose('Build the dependency graph of every repository default branch');
 
 Schedule::command('model:prune')->dailyAt('02:30');
 Schedule::command('learnings:propose')->dailyAt('03:00');

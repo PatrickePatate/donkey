@@ -159,6 +159,16 @@ new #[Title('Repositories')] class extends Component
         $this->dispatch('toast', message: "Building the code graph of {$repository->full_name}…");
     }
 
+    public function buildAllGraphs(): void
+    {
+        Gate::authorize('update', $this->organization);
+
+        // The job resolves each default branch head itself, and is unique per repository while queued.
+        $this->organization->repositories()->each(fn (Repository $repository) => BuildRepositoryGraph::dispatch($repository));
+
+        $this->dispatch('toast', message: 'Building the code graph of every repository…');
+    }
+
     private function findRepository(int $repositoryId): Repository
     {
         return $this->organization->repositories()->with('organization')->findOrFail($repositoryId);
@@ -173,11 +183,21 @@ new #[Title('Repositories')] class extends Component
             <p class="text-sm text-muted-foreground">Choose which repositories get reviewed and how strict the risk gate is.</p>
         </div>
 
+        <div class="flex flex-wrap gap-2">
+            @if ($this->graphAvailable && $this->repositories->isNotEmpty())
+                @can('update', $this->organization)
+                    <x-ui.button variant="outline" wire:click="buildAllGraphs">
+                        <x-ui.icon name="activity" /> Build all graphs
+                    </x-ui.button>
+                @endcan
+            @endif
+
         @can('manageGithub', $this->organization)
             <x-ui.button :href="route('github.install')">
                 <x-ui.icon name="github" /> Connect GitHub
             </x-ui.button>
         @endcan
+        </div>
     </div>
 
     @if (config('graph.enabled') && ! $this->graphAvailable && $this->repositories->isNotEmpty())

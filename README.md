@@ -75,9 +75,22 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
 
    To build on the server instead, run `docker compose --env-file .env.production -f compose.prod.yaml up -d --build`.
 
-   Migrations run automatically before the app starts. The web container is reached through Traefik and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
+   Migrations run automatically before the app starts. The web container is reached through your reverse proxy and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
 
-   The stack is wired for Traefik (external network `web`, entrypoint `websecure`, resolver `lets-encrypt`): set `DONKEY_HOST` in `.env.production` and no host port is published. Adjust the labels in `compose.prod.yaml` if your Traefik setup differs.
+   The `web` container listens on `127.0.0.1:8090` (change it with `DONKEY_PORT`). Point a TLS-terminating reverse proxy at it, forwarding the `Upgrade`/`Connection` headers so WebSockets work, plus `Host` and `X-Forwarded-*`. With nginx:
+
+   ```nginx
+   location / {
+       proxy_pass http://127.0.0.1:8090;
+       proxy_http_version 1.1;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection 'upgrade';
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header X-Forwarded-Proto $scheme;
+   }
+   ```
 
 4. Open your `APP_URL`, register, create an organization and connect GitHub from **Repositories → Connect GitHub**.
 

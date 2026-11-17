@@ -4,6 +4,7 @@ use App\Actions\DecayLearnings;
 use App\Enums\SignalType;
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\ProposeLearnings;
+use App\Jobs\ScanRepositoryDependencies;
 use App\Models\FindingSignal;
 use App\Models\Repository;
 use Illuminate\Foundation\Inspiring;
@@ -41,6 +42,16 @@ Artisan::command('graphs:build {--organization= : Only the repositories of this 
     $this->info("Queued graph builds for {$count} ".str('repository')->plural($count).'.');
 })->purpose('Build the dependency graph of every repository default branch');
 
+Artisan::command('security:scan {--organization= : Only the repositories of this organization id}', function () {
+    $repositories = Repository::query()->when($this->option('organization'), fn ($query, $id) => $query->where('organization_id', $id));
+    $count = $repositories->count();
+
+    $repositories->each(fn (Repository $repository) => ScanRepositoryDependencies::dispatch($repository));
+
+    $this->info("Queued dependency scans for {$count} ".str('repository')->plural($count).'.');
+})->purpose('Check every repository composer.lock against the Packagist security advisories');
+
 Schedule::command('model:prune')->dailyAt('02:30');
 Schedule::command('learnings:propose')->dailyAt('03:00');
 Schedule::command('learnings:decay')->dailyAt('03:30');
+Schedule::command('security:scan')->dailyAt('04:00');

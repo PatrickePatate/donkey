@@ -36,6 +36,7 @@ Route::middleware('auth')->group(function () {
         Route::livewire('/repositories/{repository}/graph', 'pages::repositories.graph')->name('repositories.graph');
         Route::livewire('/pull-requests', 'pages::pull-requests.index')->name('pull-requests.index');
         Route::livewire('/pull-requests/{pullRequest}', 'pages::pull-requests.show')->name('pull-requests.show');
+        Route::livewire('/security', 'pages::security.index')->name('security.index');
         Route::livewire('/knowledge', 'pages::knowledge.index')->name('knowledge.index');
         Route::livewire('/agents', 'pages::agents.index')->name('agents.index');
         Route::livewire('/agents/create', 'pages::agents.edit')->name('agents.create');

@@ -35,6 +35,14 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DONKEY_PORT:-8090}:80"
+    volumes:
+      # Serves the `public` disk (e.g. organization avatars) without a storage:link symlink.
+      - type: volume
+        source: storage
+        target: /var/www/html/public/storage
+        read_only: true
+        volume:
+          subpath: app/public
     depends_on:
       - app
       - reverb

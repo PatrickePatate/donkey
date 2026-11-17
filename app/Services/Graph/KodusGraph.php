@@ -53,7 +53,7 @@ class KodusGraph
      * Review context for changed files, compared against a base-branch graph.
      *
      * @param  list<string>  $files
-     * @param  'prompt'|'json'  $format
+     * @param  'prompt'|'xml'|'json'  $format
      */
     public function context(string $repoDirectory, string $graphPath, array $files, string $diffPath, string $format, string $outputPath): ProcessResult
     {

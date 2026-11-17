@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AiFeature;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
@@ -125,6 +126,23 @@ class ReviewRun extends Model
     public function findings(): HasMany
     {
         return $this->hasMany(ReviewFinding::class);
+    }
+
+    /**
+     * Estimated cost in millionths of a dollar: the metered review, agent and verification calls made on the pull
+     * request while this run was going. Null before it starts; dry runs are not metered.
+     */
+    public function estimatedCostMicros(): ?int
+    {
+        if ($this->started_at === null) {
+            return null;
+        }
+
+        return (int) AiUsage::query()
+            ->where('pull_request_id', $this->pull_request_id)
+            ->whereIn('feature', [AiFeature::Review, AiFeature::Agent, AiFeature::Verification])
+            ->whereBetween('created_at', [$this->started_at, $this->completed_at ?? now()])
+            ->sum('cost_micros');
     }
 
     public function durationInSeconds(): ?int

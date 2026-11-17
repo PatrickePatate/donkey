@@ -38,6 +38,17 @@ const CONTEXT_JSON = [
     ],
 ];
 
+const CONTEXT_XML = <<<'XML'
+<CallGraph>
+  <!-- Static analysis of this repo at one commit. -->
+  <Summary changedFunctions="1" riskLevel="MEDIUM" riskScore="0.57" />
+  <ChangedFunction name="AuthService.verifyToken" file="src/auth.ts" lines="16-18" />
+  <Imports count="1">
+    <Import source="src/api.ts" target="src/auth.ts" />
+  </Imports>
+</CallGraph>
+XML;
+
 beforeEach(function () {
     configureGitHubApp();
     config([
@@ -88,7 +99,7 @@ function fakeGraphProcesses(bool $available = true): void
             match ($command[1]) {
                 'parse' => File::put($out, json_encode(['metadata' => ['total_nodes' => 120, 'total_edges' => 340, 'files_parsed' => 18], 'nodes' => [], 'edges' => []])),
                 'update' => File::put($out, json_encode(['metadata' => ['total_nodes' => 121, 'total_edges' => 341, 'files_parsed' => 18], 'nodes' => [], 'edges' => []])),
-                'context' => File::put($out, in_array('json', $command, true) ? json_encode(CONTEXT_JSON) : "1 changed (1 untested) | 5 impacted | 3 files | risk MEDIUM 0.57\nCHANGED:\n  verifyToken …"),
+                'context' => File::put($out, in_array('json', $command, true) ? json_encode(CONTEXT_JSON) : CONTEXT_XML),
                 default => null,
             };
 
@@ -113,7 +124,9 @@ it('builds the base graph, checks out the head and returns structured context', 
         ->and($result->context->riskScore)->toBe(57)
         ->and($result->context->testGaps)->toBe(1)
         ->and($result->context->impactedFunctions)->toBe(5)
-        ->and($result->context->prompt)->toContain('risk MEDIUM 0.57')
+        ->and($result->context->prompt)->toContain('<ChangedFunction name="AuthService.verifyToken"')
+        ->and($result->context->prompt)->not->toContain('<Imports')
+        ->and($result->context->prompt)->not->toContain('<!--')
         ->and($result->context->changedFunctions[0]->callers)->toBe(2)
         ->and($result->context->summary()['changed_functions'][0]['contract'][0]['new'])->toBe('(token: string, opts: VerifyOpts)');
 
@@ -127,6 +140,7 @@ it('builds the base graph, checks out the head and returns structured context', 
     Process::assertRan(fn (PendingProcess $process) => $process->command === ['git', 'fetch', '--quiet', '--depth=1', '--no-tags', '--no-recurse-submodules', 'origin', str_repeat('b', 40)]);
     Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'fetch' && end($process->command) === str_repeat('a', 40));
     Process::assertRan(fn (PendingProcess $process) => ($process->command[1] ?? null) === 'context'
+        && in_array('xml', $process->command, true)
         && in_array('src/auth.ts', $process->command, true)
         && in_array($graph->path, $process->command, true));
 });

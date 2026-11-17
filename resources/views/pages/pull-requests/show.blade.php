@@ -533,6 +533,8 @@ new class extends Component
                         <dd class="text-right tabular-nums">{{ $run->files_reviewed }}</dd>
                         <dt class="text-muted-foreground">Tokens</dt>
                         <dd class="text-right tabular-nums">{{ number_format($run->tokens_input + $run->tokens_output) }}</dd>
+                        <dt class="text-muted-foreground">Estimated cost</dt>
+                        <dd class="text-right tabular-nums">{{ $run->is_dry_run || ($cost = $run->estimatedCostMicros()) === null ? '—' : \App\Services\Usage\UsageReport::money($cost) }}</dd>
                         <dt class="text-muted-foreground">Duration</dt>
                         <dd class="text-right tabular-nums">{{ $run->durationInSeconds() !== null ? $run->durationInSeconds().'s' : '—' }}</dd>
                         <dt class="col-span-2 text-muted-foreground">Model</dt>

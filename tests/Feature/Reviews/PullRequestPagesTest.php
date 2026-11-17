@@ -1,11 +1,13 @@
 <?php
 
+use App\Enums\AiFeature;
 use App\Enums\FindingStatus;
 use App\Enums\OrganizationRole;
 use App\Enums\ReviewRunStatus;
 use App\Enums\ReviewStage;
 use App\Enums\ReviewTrigger;
 use App\Jobs\ReviewPullRequest;
+use App\Models\AiUsage;
 use App\Models\GithubInstallation;
 use App\Models\PullRequest;
 use App\Models\Repository;
@@ -151,4 +153,19 @@ it('shows the structural impact and verifier notes of a review', function () {
         ->set('findingStatus', 'rejected')
         ->assertSee('Imaginary race condition')
         ->assertSee('No shared state is touched.');
+});
+
+it('estimates a review cost from the calls made on the pull request during the run', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+    $run = ReviewRun::factory()->for($pullRequest)->create(['started_at' => now()->subMinutes(5), 'completed_at' => now()->subMinute()]);
+    $usage = ['organization_id' => $organization->id, 'pull_request_id' => $pullRequest->id];
+    AiUsage::factory()->create([...$usage, 'cost_micros' => 1_200_000, 'created_at' => now()->subMinutes(4)]);
+    AiUsage::factory()->create([...$usage, 'feature' => AiFeature::Verification, 'cost_micros' => 300_000, 'created_at' => now()->subMinutes(2)]);
+    AiUsage::factory()->create([...$usage, 'feature' => AiFeature::Conversation, 'cost_micros' => 5_000_000, 'created_at' => now()->subMinutes(3)]);
+    AiUsage::factory()->create([...$usage, 'cost_micros' => 7_000_000, 'created_at' => now()->subMinutes(10)]);
+
+    expect($run->estimatedCostMicros())->toBe(1_500_000);
+
+    $this->actingAs($user)->get(route('pull-requests.show', $pullRequest))->assertSee('Estimated cost')->assertSee('$1.50');
 });

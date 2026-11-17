@@ -45,14 +45,14 @@ class GraphContextProvider
                 $diffPath = $scratch.'/pr.diff';
                 File::put($diffPath, $this->unifiedDiff($context));
 
-                $promptPath = $scratch.'/context.txt';
-                $this->kodusGraph->context($directory, (string) $graph->path, $files, $diffPath, 'prompt', $promptPath);
+                $promptPath = $scratch.'/context.xml';
+                $this->kodusGraph->context($directory, (string) $graph->path, $files, $diffPath, 'xml', $promptPath);
 
                 $jsonPath = $scratch.'/context.json';
                 $this->kodusGraph->context($directory, (string) $graph->path, $files, $diffPath, 'json', $jsonPath);
 
                 return new GraphContextResult(RunGraphStatus::Ready, $this->toContext(
-                    Str::limit(trim((string) File::get($promptPath)), (int) config('graph.max_prompt_characters'), "\n…(truncated)"),
+                    Str::limit($this->withoutNoise((string) File::get($promptPath)), (int) config('graph.max_prompt_characters'), "\n…(truncated)"),
                     $jsonPath,
                 ));
             });
@@ -63,6 +63,14 @@ class GraphContextProvider
         } finally {
             File::deleteDirectory($scratch);
         }
+    }
+
+    /**
+     * Drop the file-to-file imports (they repeat the diff's own use lines and fill ~40% of the block) and kodus's comments.
+     */
+    private function withoutNoise(string $xml): string
+    {
+        return trim((string) preg_replace(['#<!--.*?-->\s*#s', '#<Imports\b(?:[^>]*/>|.*?</Imports>)\s*#s'], '', $xml));
     }
 
     private function toContext(string $prompt, string $jsonPath): GraphContext

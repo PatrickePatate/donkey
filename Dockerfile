@@ -50,7 +50,7 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/private bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-# Set after the build steps above, which must not boot with them. Defaults for the Compose stack (compose.prod.yaml); .env.production overrides any of them.
+# Set after the build steps above, which must not boot with them. Defaults for the Compose stack (compose.prod.yaml); .env overrides any of them.
 ENV APP_NAME=Donkey APP_DEBUG=false LOG_CHANNEL=stderr LOG_LEVEL=info TRUSTED_PROXIES=* \
     DB_CONNECTION=pgsql DB_HOST=pgsql DB_PORT=5432 DB_DATABASE=donkey DB_USERNAME=donkey DB_PASSWORD=donkey \
     REDIS_CLIENT=phpredis REDIS_HOST=redis REDIS_PORT=6379 \

@@ -57,10 +57,10 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
 2. **Create the environment file** and fill it in:
 
    ```bash
-   cp .env.production.example .env.production
+   cp .env.docker.example .env
    ```
 
-   Only `APP_URL`, the `GITHUB_*` values and mail need filling in; everything else has a working default. `APP_KEY` and the Reverb keys are generated on first start and kept in the `storage` volume (`storage/app/private/generated.env`); set them in `.env.production` to use your own.
+   Only `APP_URL`, the `GITHUB_*` values and mail need filling in; everything else has a working default. `APP_KEY` and the Reverb keys are generated on first start and kept in the `storage` volume (`storage/app/private/generated.env`); set them in `.env` to use your own. `.env` also sets `COMPOSE_FILE=compose.prod.yaml`, so plain `docker compose` commands (`up -d`, `logs`, `ps`…) use the production stack.
 
 3. **Start it.** Images are built by GitHub Actions on every push to `main` and published to GHCR (`ghcr.io/<owner>/donkey-app` and `donkey-web`), so the server never builds anything:
 
@@ -69,7 +69,7 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
    ./deploy.sh            # pull the latest images and restart; ./deploy.sh <commit-sha> rolls back
    ```
 
-   To build on the server instead, run `docker compose --env-file .env.production -f compose.prod.yaml up -d --build`.
+   To build on the server instead, run `docker compose up -d --build`.
 
    Migrations run automatically before the app starts, on every start. The first run also creates the app key, Reverb keys and the OAuth keys for the MCP server (`storage/oauth-*.key` in the `storage` volume): keep that volume, or MCP clients have to sign in again. The web container is reached through your reverse proxy and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
 

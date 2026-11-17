@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 export DONKEY_TAG="${1:-latest}"
-compose="docker compose --env-file .env.production -f compose.prod.yaml"
+compose="docker compose -f compose.prod.yaml"
 
 $compose pull
 $compose up -d --remove-orphans

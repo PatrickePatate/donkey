@@ -2,6 +2,7 @@
 
 use App\Enums\LearningStatus;
 use App\Models\Organization;
+use App\Models\SecurityAdvisory;
 use App\Models\WebhookEvent;
 use App\Services\Knowledge\QualityMetrics;
 use Illuminate\Database\Eloquent\Collection;
@@ -55,6 +56,35 @@ new #[Title('Dashboard')] class extends Component
     public function quality(): array
     {
         return app(QualityMetrics::class)->forOrganization($this->organization);
+    }
+
+    /**
+     * Repositories with known vulnerabilities and the packages behind them, worst first.
+     *
+     * @return array{checked: int, affected: int, severe: int, packages: list<array{package: string, severity: ?string, repositories: int}>}
+     */
+    #[Computed]
+    public function security(): array
+    {
+        $repositoryIds = $this->organization->repositories()->select('id');
+        $advisories = SecurityAdvisory::query()->whereIn('repository_id', $repositoryIds);
+        $rank = "min(case severity when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end)";
+
+        return [
+            'checked' => $this->organization->repositories()->whereNotNull('composer_packages_count')->count(),
+            'affected' => (clone $advisories)->distinct()->count('repository_id'),
+            'severe' => (clone $advisories)->whereIn('severity', ['critical', 'high'])->distinct()->count('repository_id'),
+            'packages' => (clone $advisories)->toBase()
+                ->selectRaw("package, {$rank} as severity_rank, count(distinct repository_id) as repositories")
+                ->groupBy('package')
+                ->orderBy('severity_rank')
+                ->orderByDesc('repositories')
+                ->orderBy('package')
+                ->limit(6)
+                ->get()
+                ->map(fn ($row): array => ['package' => $row->package, 'severity' => ['critical', 'high', 'medium', 'low'][$row->severity_rank] ?? null, 'repositories' => (int) $row->repositories])
+                ->all(),
+        ];
     }
 
     #[Computed]
@@ -182,6 +212,49 @@ new #[Title('Dashboard')] class extends Component
             </div>
         @endif
     </x-ui.card>
+
+    @if ($this->security['checked'] > 0)
+        <x-ui.card title="Security" :description="'Known vulnerabilities in the Composer dependencies of '.$this->security['checked'].' '.str('repository')->plural($this->security['checked']).'.'">
+            <x-slot:actions>
+                <x-ui.button variant="outline" size="sm" :href="route('security.index')" wire:navigate>View all</x-ui.button>
+            </x-slot:actions>
+
+            @if ($this->security['affected'] === 0)
+                <p class="flex items-center gap-2 text-sm text-muted-foreground"><x-ui.icon name="check" class="text-success" /> No known vulnerabilities.</p>
+            @else
+                <div class="grid gap-6 md:grid-cols-[14rem_1fr]">
+                    <div class="grid content-start gap-4">
+                        <div class="grid gap-1">
+                            <span class="text-3xl font-semibold tabular-nums">{{ $this->security['affected'] }}<span class="text-base font-normal text-muted-foreground"> / {{ $this->security['checked'] }}</span></span>
+                            <span class="text-sm text-muted-foreground">{{ str('project')->plural($this->security['affected']) }} with vulnerable packages</span>
+                        </div>
+                        <div class="grid gap-1">
+                            <span @class(['text-3xl font-semibold tabular-nums', 'text-destructive' => $this->security['severe'] > 0])>{{ $this->security['severe'] }}</span>
+                            <span class="text-sm text-muted-foreground">with a critical or high one</span>
+                        </div>
+                    </div>
+
+                    <div class="grid content-start gap-2">
+                        <p class="text-xs font-medium text-muted-foreground">Packages to update</p>
+                        <ul class="divide-y">
+                            @foreach ($this->security['packages'] as $row)
+                                @php($severity = \App\Enums\FindingSeverity::tryFrom((string) $row['severity']))
+                                <li class="flex items-center gap-3 py-2 text-sm">
+                                    @if ($severity)
+                                        <x-ui.badge :variant="$severity->badgeVariant()">{{ $severity->label() }}</x-ui.badge>
+                                    @else
+                                        <x-ui.badge variant="outline">Unrated</x-ui.badge>
+                                    @endif
+                                    <a href="{{ route('security.index', ['search' => $row['package']]) }}" wire:navigate class="truncate font-mono text-xs font-medium hover:underline">{{ $row['package'] }}</a>
+                                    <span class="ml-auto shrink-0 text-xs text-muted-foreground">{{ $row['repositories'] }} {{ str('project')->plural($row['repositories']) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+            @endif
+        </x-ui.card>
+    @endif
 
     <x-ui.card title="Live activity" description="GitHub events for this organization, updated in real time.">
         @if ($this->recentEvents->isEmpty())

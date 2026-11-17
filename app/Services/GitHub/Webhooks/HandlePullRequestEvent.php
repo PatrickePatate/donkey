@@ -9,6 +9,7 @@ use App\Enums\WebhookEventStatus;
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\CollectFindingFeedback;
 use App\Jobs\GenerateRepositoryDocumentation;
+use App\Jobs\ScanRepositoryDependencies;
 use App\Models\GithubInstallation;
 use App\Models\WebhookEvent;
 
@@ -22,14 +23,16 @@ class HandlePullRequestEvent
      */
     private const REVIEWABLE_ACTIONS = ['opened', 'reopened', 'synchronize', 'ready_for_review'];
 
-    public function __construct(private SyncPullRequest $syncPullRequest, private StartReview $startReview) {}
+    public function __construct(private SyncPullRequest $syncPullRequest, private StartReview $startReview)
+    {
+    }
 
     public function handle(?GithubInstallation $installation, WebhookEvent $event): WebhookEventStatus
     {
         $payload = $event->payload;
         $repository = $installation?->repositories()->with('organization')->firstWhere('github_id', $payload['repository']['id'] ?? 0);
 
-        if ($repository === null || ! isset($payload['pull_request'])) {
+        if ($repository === null || !isset($payload['pull_request'])) {
             return WebhookEventStatus::Ignored;
         }
 
@@ -38,8 +41,8 @@ class HandlePullRequestEvent
         if (
             in_array($event->action, self::REVIEWABLE_ACTIONS, true)
             && $pullRequest->isOpen()
-            && ! $pullRequest->is_draft
-            && ! $pullRequest->auto_review_paused
+            && !$pullRequest->is_draft
+            && !$pullRequest->auto_review_paused
             && $repository->autoReviewEnabled()
         ) {
             $this->startReview->handle($pullRequest, ReviewTrigger::Auto, $payload['sender']['login'] ?? null);
@@ -53,6 +56,7 @@ class HandlePullRequestEvent
 
         if ($event->action === 'closed' && $pullRequest->state === 'merged' && $pullRequest->base_ref === $repository->default_branch && is_string($mergeCommit)) {
             BuildRepositoryGraph::dispatch($repository, $mergeCommit);
+            ScanRepositoryDependencies::dispatch($repository);
 
             if ($repository->auto_docs_enabled) {
                 GenerateRepositoryDocumentation::dispatchFor($repository);

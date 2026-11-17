@@ -24,7 +24,7 @@ new class extends Component
     {
         $this->repositoryId = $repository;
 
-        if (!in_array($this->tab, ['overview', 'documentation', 'graph'], true)) {
+        if (!in_array($this->tab, ['overview', 'documentation', 'graph', 'security'], true)) {
             $this->tab = 'overview';
         }
     }
@@ -83,7 +83,7 @@ new class extends Component
 
 @php
     $repository = $this->repository;
-    $tabs = ['overview' => 'Overview', 'documentation' => 'Documentation', 'graph' => 'Dependency graph'];
+    $tabs = ['overview' => 'Overview', 'documentation' => 'Documentation', 'graph' => 'Dependency graph', 'security' => 'Security'];
 @endphp
 
 <div class="grid gap-6">
@@ -118,6 +118,8 @@ new class extends Component
 
     @if ($tab === 'documentation')
         <livewire:pages::repositories.documentation :repository="$repository->id" :embedded="true" wire:key="documentation" />
+    @elseif ($tab === 'security')
+        <livewire:pages::security.index :repository="$repository->id" :embedded="true" wire:key="security" />
     @elseif ($tab === 'graph')
         <livewire:pages::repositories.graph :repository="$repository->id" :embedded="true" wire:key="graph" />
     @else

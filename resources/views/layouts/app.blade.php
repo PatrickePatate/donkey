@@ -5,6 +5,7 @@
         ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => 'layout-dashboard'],
         ['label' => 'Pull requests', 'route' => 'pull-requests.*', 'href' => 'pull-requests.index', 'icon' => 'git-pull-request'],
         ['label' => 'Repositories', 'route' => 'repositories.index', 'icon' => 'git-branch'],
+        ['label' => 'Security', 'route' => 'security.index', 'icon' => 'shield'],
         ['label' => 'Agents', 'route' => 'agents.*', 'href' => 'agents.index', 'icon' => 'bot'],
         ['label' => 'Knowledge', 'route' => 'knowledge.*', 'href' => 'knowledge.index', 'icon' => 'lightbulb'],
     ];

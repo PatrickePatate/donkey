@@ -4,6 +4,7 @@ use App\Enums\ReviewTrigger;
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\ProcessGitHubWebhook;
 use App\Jobs\ReviewPullRequest;
+use App\Jobs\ScanRepositoryDependencies;
 use App\Models\GithubInstallation;
 use App\Models\PullRequest;
 use App\Models\Repository;
@@ -176,7 +177,7 @@ it('replies with the list of commands when asked for help', function () {
 });
 
 it('pre-builds the base graph when a pull request is merged into the default branch', function () {
-    Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class]);
+    Queue::fake([ReviewPullRequest::class, BuildRepositoryGraph::class, ScanRepositoryDependencies::class]);
 
     processEvent('pull_request', 'closed', $this->installation, [
         'repository' => ['id' => $this->repository->github_id],
@@ -189,6 +190,7 @@ it('pre-builds the base graph when a pull request is merged into the default bra
 
     Queue::assertPushedOn('graphs', BuildRepositoryGraph::class, fn (BuildRepositoryGraph $job) => $job->commitSha === str_repeat('m', 40)
         && $job->repository->is($this->repository));
+    Queue::assertPushed(ScanRepositoryDependencies::class, fn (ScanRepositoryDependencies $job) => $job->repository->is($this->repository));
 });
 
 it('does not build graphs for pull requests closed without merging', function () {

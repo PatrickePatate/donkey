@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Services\Ai\OrganizationAi;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\AiManager;
+use Laravel\Ai\AnonymousAgent;
 use Livewire\Livewire;
 
 require_once __DIR__.'/../Reviews/ReviewTestHelpers.php';
@@ -135,4 +136,18 @@ it('saves a reasoning effort per use and sends it in each provider format', func
         ->and($reviewer->providerOptions('openai'))->toBe(['reasoning' => ['effort' => 'high']])
         ->and($reviewer->providerOptions('mistral'))->toBe([])
         ->and(CodeReviewer::make()->providerOptions('anthropic'))->toBe([]);
+});
+
+it('tests the typed or saved key without saving it', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $organization->update(['ai_provider' => 'anthropic', 'ai_api_key' => null]);
+    AnonymousAgent::fake(['OK']);
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')->call('testAi')->assertHasErrors('aiApiKey');
+    AnonymousAgent::assertNeverPrompted();
+
+    Livewire::actingAs($owner)->test('pages::settings.organization')->set('aiApiKey', 'sk-new')->call('testAi')->assertHasNoErrors()->assertDispatched('toast');
+    AnonymousAgent::assertPrompted(fn ($prompt) => $prompt->model === config('reviews.model'));
+
+    expect($organization->fresh()->hasAiKey())->toBeFalse();
 });

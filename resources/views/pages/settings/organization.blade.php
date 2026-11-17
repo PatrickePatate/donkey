@@ -2,11 +2,13 @@
 
 use App\Enums\OrganizationRole;
 use App\Models\Organization;
+use App\Services\Ai\OrganizationAi;
 use App\Services\Audit\AuditLog;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Laravel\Ai\AnonymousAgent;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -119,6 +121,45 @@ new #[Title('Organization settings')] class extends Component
 
         $this->aiApiKey = '';
         $this->dispatch('toast', message: $newKey === null && $providerChanged ? 'AI settings saved. Add an API key for the new provider to resume reviews.' : 'AI settings saved.', variant: 'success');
+    }
+
+    /**
+     * Sends a tiny prompt with the provider, key and review model in the form, without saving them.
+     */
+    public function testAi(OrganizationAi $ai): void
+    {
+        Gate::authorize('manageAi', $this->organization);
+
+        $validated = $this->validate([
+            'aiProvider' => ['required', Rule::in(array_keys(self::AI_PROVIDERS))],
+            'aiApiKey' => ['nullable', 'string', 'max:500'],
+            'reviewModel' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        // Like saveAi: the saved key only applies to the provider it was saved for.
+        $key = filled($validated['aiApiKey']) ? trim($validated['aiApiKey'])
+            : ($validated['aiProvider'] === $this->organization->aiProvider() ? $this->organization->ai_api_key : null);
+
+        if (blank($key)) {
+            $this->addError('aiApiKey', 'Paste an API key to test.');
+
+            return;
+        }
+
+        $probe = clone $this->organization;
+        $probe->ai_provider = $validated['aiProvider'];
+        $probe->ai_api_key = $key;
+        $probe->review_model = $validated['reviewModel'] ?: null;
+
+        try {
+            (new AnonymousAgent('Reply with OK.', [], []))->prompt('Ping', provider: $ai->provider($probe), model: $probe->modelFor('review'), timeout: 30);
+        } catch (Throwable $e) {
+            $this->addError('aiApiKey', 'The key did not work: '.Str::limit($e->getMessage(), 200));
+
+            return;
+        }
+
+        $this->dispatch('toast', message: 'The key works with '.$probe->modelFor('review').'.', variant: 'success');
     }
 
     public function removeAiKey(): void
@@ -401,6 +442,10 @@ new #[Title('Organization settings')] class extends Component
                 <x-slot:footer>
                     <div class="flex flex-wrap gap-2">
                         <x-ui.button type="submit">Save AI settings</x-ui.button>
+                        <x-ui.button type="button" variant="outline" wire:click="testAi">
+                            <x-ui.icon name="refresh" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="testAi" />
+                            Test key
+                        </x-ui.button>
                         @if ($this->organization->hasAiKey())
                             <x-ui.button type="button" variant="outline" wire:click="removeAiKey" wire:confirm="Remove the API key? Reviews are paused until you save a new one.">Remove key</x-ui.button>
                         @endif

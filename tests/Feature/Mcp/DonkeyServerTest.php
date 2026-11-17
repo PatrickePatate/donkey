@@ -30,7 +30,19 @@ it('rejects unauthenticated HTTP requests', function () {
     $key = RSA::createKey(2048);
     config(['passport.private_key' => (string) $key, 'passport.public_key' => (string) $key->getPublicKey()]);
 
-    $this->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])->assertUnauthorized();
+    // MCP clients don't send Accept: application/json; they need a 401 pointing to the OAuth metadata, not a login redirect.
+    $this->post('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])
+        ->assertUnauthorized()
+        ->assertHeader('WWW-Authenticate', 'Bearer realm="mcp", resource_metadata="'.url('/.well-known/oauth-protected-resource/mcp').'"');
+});
+
+it('only rate limits OAuth client registration, not discovery', function () {
+    foreach (range(1, 15) as $attempt) {
+        $this->get('/.well-known/oauth-protected-resource/mcp')->assertOk();
+        $this->get('/.well-known/oauth-authorization-server')->assertOk()->assertJsonPath('registration_endpoint', url('/oauth/register'));
+    }
+
+    expect(app('router')->getRoutes()->getByName('mcp.oauth.register')->gatherMiddleware())->toContain('throttle:10,1');
 });
 
 it('lists only repositories of the current organization', function () {

@@ -75,7 +75,7 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
 
    To build on the server instead, run `docker compose --env-file .env.production -f compose.prod.yaml up -d --build`.
 
-   Migrations run automatically before the app starts. The web container is reached through your reverse proxy and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
+   Migrations run automatically before the app starts. The first run also creates the OAuth keys for the MCP server (`storage/oauth-*.key` in the `storage` volume): keep that volume, or MCP clients have to sign in again. The web container is reached through your reverse proxy and also proxies WebSockets (`/app`) to Reverb, so one hostname is enough. Keep `TRUSTED_PROXIES=*`.
 
    The `web` container listens on `127.0.0.1:8090` (change it with `DONKEY_PORT`). Point a TLS-terminating reverse proxy at it, forwarding the `Upgrade`/`Connection` headers so WebSockets work, plus `Host` and `X-Forwarded-*`. With nginx:
 

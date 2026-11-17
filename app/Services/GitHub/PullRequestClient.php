@@ -6,13 +6,16 @@ use App\Models\PullRequest;
 use App\Models\Repository;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Str;
 
 /**
  * Pull request operations performed as the GitHub App installation.
  */
 class PullRequestClient
 {
-    public function __construct(private GitHubApp $github) {}
+    public function __construct(private GitHubApp $github)
+    {
+    }
 
     /**
      * Files changed by the pull request, with their unified patches.
@@ -286,6 +289,47 @@ class PullRequestClient
         }
 
         return $paths;
+    }
+
+    /**
+     * Writes one file on a branch cut from the default branch and opens (or reuses) a pull request for it.
+     *
+     * @return string The pull request's web URL.
+     */
+    public function proposeFile(Repository $repository, string $branch, string $path, string $content, string $title, string $body): string
+    {
+        $request = fn (): PendingRequest => $this->repositoryRequest($repository);
+        $repoPath = $this->repositoryPath($repository);
+        $encodedPath = implode('/', array_map('rawurlencode', explode('/', $path)));
+
+        $created = $request()->post("{$repoPath}/git/refs", [
+            'ref' => "refs/heads/{$branch}",
+            'sha' => $this->branchHead($repository, $repository->default_branch),
+        ]);
+
+        // 422 means the branch already exists from an earlier proposal: update it in place.
+        if ($created->status() !== 422) {
+            $created->throw();
+        }
+
+        $existingSha = $request()->get("{$repoPath}/contents/{$encodedPath}", ['ref' => $branch])->json('sha');
+
+        $request()->put("{$repoPath}/contents/{$encodedPath}", array_filter([
+            'message' => $title,
+            'content' => base64_encode($content),
+            'branch' => $branch,
+            'sha' => $existingSha,
+        ]))->throw();
+
+        $owner = Str::before($repository->full_name, '/');
+        $open = $request()->get("{$repoPath}/pulls", ['head' => "{$owner}:{$branch}", 'state' => 'open'])->throw()->json('0.html_url');
+
+        return $open ?? (string) $request()->post("{$repoPath}/pulls", [
+            'title' => $title,
+            'body' => $body,
+            'head' => $branch,
+            'base' => $repository->default_branch,
+        ])->throw()->json('html_url');
     }
 
     private function request(PullRequest $pullRequest): PendingRequest

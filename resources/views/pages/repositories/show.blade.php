@@ -1,10 +1,13 @@
 <?php
 
+use App\Actions\ProposeDonkeySkill;
 use App\Enums\FindingStatus;
 use App\Models\PullRequest;
 use App\Models\Repository;
 use App\Models\ReviewFinding;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -21,7 +24,7 @@ new class extends Component
     {
         $this->repositoryId = $repository;
 
-        if (! in_array($this->tab, ['overview', 'documentation', 'graph'], true)) {
+        if (!in_array($this->tab, ['overview', 'documentation', 'graph'], true)) {
             $this->tab = 'overview';
         }
     }
@@ -37,6 +40,22 @@ new class extends Component
         return auth()->user()->currentOrganization->repositories()
             ->with(['installation', 'latestGraph', 'document'])
             ->findOrFail($this->repositoryId);
+    }
+
+    public function proposeSkill(ProposeDonkeySkill $proposeSkill): void
+    {
+        Gate::authorize('update', $this->repository);
+
+        try {
+            $url = $proposeSkill->handle($this->repository);
+        } catch (RequestException $exception) {
+            report($exception);
+            $this->dispatch('toast', message: 'GitHub refused the pull request. Check that the Donkey app may write contents and pull requests.', variant: 'destructive');
+
+            return;
+        }
+
+        $this->redirect($url);
     }
 
     /**
@@ -77,7 +96,12 @@ new class extends Component
             </h1>
             <p class="text-sm text-muted-foreground">Default branch <code>{{ $repository->default_branch }}</code></p>
         </div>
-        <x-ui.button variant="outline" :href="rtrim(config('services.github.web_url'), '/').'/'.$repository->full_name" target="_blank" rel="noopener">View on GitHub</x-ui.button>
+        <div class="flex gap-2">
+            @can('update', $repository)
+                <x-ui.button variant="outline" wire:click="proposeSkill" wire:loading.attr="disabled" title="Opens a pull request adding .claude/skills/donkey/SKILL.md">Add Claude skill</x-ui.button>
+            @endcan
+            <x-ui.button variant="outline" :href="rtrim(config('services.github.web_url'), '/').'/'.$repository->full_name" target="_blank" rel="noopener">View on GitHub</x-ui.button>
+        </div>
     </div>
 
     <div class="flex gap-1 border-b" role="tablist">

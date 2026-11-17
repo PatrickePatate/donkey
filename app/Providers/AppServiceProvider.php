@@ -10,6 +10,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Passport\Passport;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
         // Verified users join organizations that auto-join their email domain, when they verify and on every
         // sign-in (so a domain added later still picks them up).
         Event::listen(Verified::class, fn (Verified $event) => $event->user instanceof User ? app(AutoJoinOrganizations::class)->handle($event->user) : null);
+        Passport::authorizationView(fn (array $parameters) => view('mcp.authorize', $parameters));
+
         Event::listen(Login::class, fn (Login $event) => $event->user instanceof User ? app(AutoJoinOrganizations::class)->handle($event->user) : null);
     }
 }

@@ -92,6 +92,28 @@ The repository ships a production image (PHP-FPM, nginx, Horizon, Reverb and the
 
 To upgrade, run `./deploy.sh` again (or `git pull` and the same `up -d --build` command when building on the server); migrations run again. Data lives in the `pgsql-data`, `redis-data` and `storage` volumes. Logs go to `docker compose logs`.
 
+#### Backups
+
+`php artisan backup:run` writes `storage/backups/donkey-<date>.tar.gz` with a `pg_dump` of the database and the files that cannot be rebuilt: `storage/app` (organization avatars, the GitHub App key, `generated.env` holding the generated `APP_KEY` and Reverb keys) and the MCP OAuth keys. The scheduler runs it every night at 01:30 in production and keeps the last 7 (`--keep=N` to change). Redis is not backed up: it only holds queues, cache and sessions, so the worst a loss costs is in-flight jobs and a new sign-in.
+
+The archive contains secrets and sits in the same `storage` volume as the data, so copy it off the server (e.g. a nightly `rsync`/`restic` of the directory below):
+
+```bash
+docker compose exec -T app sh -c 'cat storage/backups/$(ls storage/backups | tail -1)' > donkey-backup.tar.gz
+```
+
+**Keep `APP_KEY`.** Organization AI API keys are encrypted with it. If you set `APP_KEY` in `.env` instead of letting Donkey generate it, it is not in the archive (the command warns): back up `.env` too, or the AI keys are lost on restore.
+
+To restore, on the same or a fresh install (started once with `docker compose up -d`, same `.env`):
+
+```bash
+docker compose exec -T app sh -c 'mkdir -p storage/backups && cat > storage/backups/restore.tar.gz' < donkey-backup.tar.gz
+docker compose exec app php artisan backup:restore restore.tar.gz
+docker compose restart
+```
+
+This replaces the database and the saved files, then the restart loads the restored keys. The GitHub App key mounted from the host (`github-app.pem`) is left as is.
+
 ### Install for development
 
 ### 1. Get the code and the services

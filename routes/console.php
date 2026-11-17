@@ -55,3 +55,4 @@ Schedule::command('model:prune')->dailyAt('02:30');
 Schedule::command('learnings:propose')->dailyAt('03:00');
 Schedule::command('learnings:decay')->dailyAt('03:30');
 Schedule::command('security:scan')->dailyAt('04:00');
+Schedule::command('backup:run')->dailyAt('01:30')->environments(['production']);

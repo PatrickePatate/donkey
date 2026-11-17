@@ -7,7 +7,9 @@ FROM php:8.5-fpm AS base
 
 COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
-RUN apt-get update && apt-get install -y --no-install-recommends git unzip \
+# postgresql-client-18 (pg_dump/pg_restore for backup:run and backup:restore) must match the server version, so it comes from the PostgreSQL apt repository.
+RUN apt-get update && apt-get install -y --no-install-recommends git unzip postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && apt-get install -y --no-install-recommends postgresql-client-18 \
     && install-php-extensions pdo_pgsql pgsql redis pcntl intl zip bcmath sockets opcache \
     && rm -rf /var/lib/apt/lists/*
 

@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Repository;
 use App\Models\RepositoryMemory;
 use App\Models\ReviewFinding;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -15,9 +16,22 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 new #[Title('Knowledge')] class extends Component
 {
+    use WithPagination;
+
+    public function updatedTab(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedRepositoryFilter(): void
+    {
+        $this->resetPage();
+    }
+
     #[Url]
     public string $tab = 'inbox';
 
@@ -79,10 +93,10 @@ new #[Title('Knowledge')] class extends Component
     }
 
     /**
-     * @return Collection<int, Learning>
+     * @return LengthAwarePaginator<int, Learning>
      */
     #[Computed]
-    public function learnings(): Collection
+    public function learnings(): LengthAwarePaginator
     {
         $statuses = $this->tab === 'inbox' ? [LearningStatus::Proposed] : [LearningStatus::Active, LearningStatus::Archived];
 
@@ -95,8 +109,7 @@ new #[Title('Knowledge')] class extends Component
             ->orderByRaw("case status when 'active' then 0 else 1 end")
             ->orderByDesc('weight')
             ->latest('id')
-            ->limit(100)
-            ->get();
+            ->paginate(25);
     }
 
     /**
@@ -113,18 +126,17 @@ new #[Title('Knowledge')] class extends Component
     }
 
     /**
-     * @return Collection<int, RepositoryMemory>
+     * @return LengthAwarePaginator<int, RepositoryMemory>
      */
     #[Computed]
-    public function memories(): Collection
+    public function memories(): LengthAwarePaginator
     {
         return RepositoryMemory::query()
             ->whereIn('repository_id', $this->repositoryFilter !== '' ? [(int) $this->repositoryFilter] : $this->repositories->modelKeys())
             ->with('repository')
             ->orderByDesc('pinned')
             ->latest('id')
-            ->limit(200)
-            ->get();
+            ->paginate(25);
     }
 
     public function approve(int $learningId): void
@@ -242,7 +254,7 @@ new #[Title('Knowledge')] class extends Component
         $memory = $this->findMemory($memoryId);
         Gate::authorize('update', $memory);
 
-        $memory->update(['pinned' => ! $memory->pinned]);
+        $memory->update(['pinned' => !$memory->pinned]);
         unset($this->memories);
     }
 
@@ -370,6 +382,8 @@ new #[Title('Knowledge')] class extends Component
                     <p class="max-w-sm text-sm text-muted-foreground">Add one here, or comment <code>{{ '@'.$this->organization->bot_handle }} remember …</code> on a pull request.</p>
                 </div>
             @endforelse
+
+            {{ $this->memories->links() }}
         </x-ui.card>
     @else
         <div class="grid gap-3">
@@ -445,6 +459,8 @@ new #[Title('Knowledge')] class extends Component
                     </div>
                 </x-ui.card>
             @endforelse
+
+            {{ $this->learnings->links() }}
         </div>
     @endif
 

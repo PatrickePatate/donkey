@@ -35,7 +35,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
     {
         $dispatch = self::dispatch($repository);
 
-        if (! $immediate) {
+        if (!$immediate) {
             $dispatch->delay(now()->addMinutes((int) config('documentation.delay_minutes')));
         }
     }
@@ -54,7 +54,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
     {
         $repository = $this->repository->fresh(['organization', 'installation', 'document']);
 
-        if ($repository === null || ! $repository->auto_docs_enabled || $usage->isOverBudget($repository->organization)) {
+        if ($repository === null || !$repository->auto_docs_enabled || $usage->isOverBudget($repository->organization)) {
             return;
         }
 
@@ -69,7 +69,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
             $tree = $client->tree($repository, $sha);
             $prompt = $this->prompt($repository, $sha, $tree, $existing?->content, $client);
             $model = $repository->organization->modelFor('review');
-            $response = RepositoryDocumenter::make()->withEffort($repository->organization->ai_effort)->prompt(
+            $response = RepositoryDocumenter::make()->withEffort($repository->organization->effortFor('documentation'))->prompt(
                 $prompt,
                 provider: $ai->provider($repository->organization),
                 model: $model,
@@ -119,7 +119,7 @@ class GenerateRepositoryDocumentation implements ShouldBeUnique, ShouldQueue
         foreach ($tree as $path) {
             $extension = Str::lower(pathinfo($path, PATHINFO_EXTENSION));
 
-            if (in_array($extension, $sourceExtensions, true) && ! in_array($path, $keyFiles, true)) {
+            if (in_array($extension, $sourceExtensions, true) && !in_array($path, $keyFiles, true)) {
                 $keyFiles[] = $path;
             }
         }

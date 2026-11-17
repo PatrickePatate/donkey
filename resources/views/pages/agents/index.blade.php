@@ -2,14 +2,18 @@
 
 use App\Models\Organization;
 use App\Models\ReviewAgent;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 new #[Title('Agents')] class extends Component
 {
+    use WithPagination;
+
     #[Computed]
     public function organization(): Organization
     {
@@ -17,16 +21,16 @@ new #[Title('Agents')] class extends Component
     }
 
     /**
-     * @return Collection<int, ReviewAgent>
+     * @return LengthAwarePaginator<int, ReviewAgent>
      */
     #[Computed]
-    public function agents(): Collection
+    public function agents(): LengthAwarePaginator
     {
         return $this->organization->reviewAgents()
             ->with('repository')
             ->orderByRaw('repository_id is not null')
             ->orderBy('name')
-            ->get();
+            ->paginate(25);
     }
 
     /**
@@ -141,6 +145,8 @@ new #[Title('Agents')] class extends Component
                     </tbody>
                 </table>
             </div>
+
+            {{ $this->agents->links() }}
         @endif
     </x-ui.card>
 </div>

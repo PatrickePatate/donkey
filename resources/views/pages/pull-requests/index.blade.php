@@ -104,7 +104,7 @@ new #[Title('Pull requests')] class extends Component
                     @foreach ($this->pullRequests as $pullRequest)
                         @php($run = $pullRequest->latestReviewRun)
                         <li wire:key="pr-{{ $pullRequest->id }}">
-                            <a href="{{ route('pull-requests.show', $pullRequest) }}" wire:navigate class="-mx-2 flex flex-wrap items-center gap-3 rounded-md px-2 py-3 hover:bg-muted/50">
+                            <a href="{{ route('pull-requests.show', $pullRequest) }}" wire:navigate class="-mx-2 flex flex-wrap items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted/50">
                                 <x-ui.icon name="git-pull-request" @class(['size-5', 'text-success' => $pullRequest->state === 'open', 'text-muted-foreground' => $pullRequest->state !== 'open']) />
                                 <div class="grid min-w-0 flex-1 gap-0.5">
                                     <span class="truncate font-medium">{{ $pullRequest->title }}</span>

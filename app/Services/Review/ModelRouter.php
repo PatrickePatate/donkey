@@ -18,7 +18,7 @@ class ModelRouter
             return (string) $agent->model;
         }
 
-        if (! $organization->eco_mode || $this->hasHighGraphRisk($graph) || $this->patchCharacters($chunk) > (int) config('reviews.eco.small_chunk_characters')) {
+        if (!$organization->eco_mode || $this->hasHighGraphRisk($graph) || $this->patchCharacters($chunk) > (int) config('reviews.eco.small_chunk_characters')) {
             return $organization->modelFor('review');
         }
 
@@ -30,7 +30,7 @@ class ModelRouter
      */
     public function verifierModel(Organization $organization, array $findings): string
     {
-        if (! $organization->eco_mode || count($findings) > (int) config('reviews.eco.verifier_max_findings')) {
+        if (!$organization->eco_mode || count($findings) > (int) config('reviews.eco.verifier_max_findings')) {
             return $organization->modelFor('verifier');
         }
 
@@ -41,6 +41,14 @@ class ModelRouter
         }
 
         return $organization->modelFor('eco');
+    }
+
+    /**
+     * Whether eco-mode routed this call to the eco model rather than the role's own.
+     */
+    public function isEco(Organization $organization, string $model, string $role): bool
+    {
+        return $organization->eco_mode && $model === $organization->modelFor('eco') && $model !== $organization->modelFor($role);
     }
 
     /**

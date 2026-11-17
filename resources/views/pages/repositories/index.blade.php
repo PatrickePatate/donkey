@@ -3,23 +3,32 @@
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\GenerateRepositoryDocumentation;
 use App\Jobs\SyncInstallationRepositories;
-use App\Services\Audit\AuditLog;
-use App\Services\GitHub\PullRequestClient;
-use App\Services\Graph\KodusGraph;
 use App\Models\GithubInstallation;
 use App\Models\Organization;
 use App\Models\Repository;
+use App\Services\Audit\AuditLog;
+use App\Services\GitHub\PullRequestClient;
+use App\Services\Graph\KodusGraph;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 new #[Title('Repositories')] class extends Component
 {
+    use WithPagination;
+
     #[Url(except: '')]
     public string $search = '';
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
 
     /**
      * @return array<string, string>
@@ -38,16 +47,16 @@ new #[Title('Repositories')] class extends Component
     }
 
     /**
-     * @return Collection<int, Repository>
+     * @return LengthAwarePaginator<int, Repository>
      */
     #[Computed]
-    public function repositories(): Collection
+    public function repositories(): LengthAwarePaginator
     {
         return $this->organization->repositories()
             ->with(['installation', 'organization', 'latestGraph', 'document'])
             ->when($this->search !== '', fn ($query) => $query->whereLike('full_name', "%{$this->search}%"))
             ->orderBy('full_name')
-            ->get();
+            ->paginate(25);
     }
 
     /**
@@ -82,7 +91,7 @@ new #[Title('Repositories')] class extends Component
         $repository->update(['auto_docs_enabled' => $enabled]);
         app(AuditLog::class)->record($this->organization, 'repository.auto_docs_changed', $repository, AuditLog::changes($repository, ['auto_docs_enabled']));
 
-        if ($enabled && ! $repository->document()->whereNotNull('content')->exists()) {
+        if ($enabled && !$repository->document()->whereNotNull('content')->exists()) {
             GenerateRepositoryDocumentation::dispatchFor($repository, immediate: true);
         }
 
@@ -94,7 +103,7 @@ new #[Title('Repositories')] class extends Component
         $repository = $this->findRepository($repositoryId);
         Gate::authorize('update', $repository);
 
-        if (! $repository->auto_docs_enabled) {
+        if (!$repository->auto_docs_enabled) {
             $this->dispatch('toast', message: 'Enable automatic documentation before regenerating it.', variant: 'destructive');
 
             return;
@@ -252,7 +261,7 @@ new #[Title('Repositories')] class extends Component
                     </p>
                 </div>
             @else
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto md:overflow-visible">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b text-left text-muted-foreground">
@@ -261,12 +270,13 @@ new #[Title('Repositories')] class extends Component
                                 <th class="h-10 px-2 font-medium">Risk threshold</th>
                                 <th class="h-10 px-2 font-medium">Code graph</th>
                                 <th class="h-10 px-2 font-medium">Docs</th>
+                                <th class="h-10 w-10 px-2"><span class="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($this->repositories as $repository)
                                 @php($canUpdate = auth()->user()->can('update', $repository))
-                                <tr wire:key="repository-{{ $repository->id }}" class="border-b last:border-0 hover:bg-muted/50">
+                                <tr wire:key="repository-{{ $repository->id }}" class="border-b last:border-0 transition-colors hover:bg-muted/50">
                                     <td class="p-2">
                                         <div class="flex items-center gap-2">
                                             <x-ui.icon :name="$repository->is_private ? 'lock' : 'globe'" class="text-muted-foreground" />
@@ -309,56 +319,72 @@ new #[Title('Repositories')] class extends Component
                                         </div>
                                     </td>
                                     <td class="p-2">
-                                        <div class="flex items-center gap-2">
-                                            @php($graph = $repository->latestGraph)
-                                            @if ($graph)
+                                        @php($graph = $repository->latestGraph)
+                                        @if ($graph)
+                                            <div class="flex items-center gap-2">
                                                 <x-ui.badge :variant="$graph->status->badgeVariant()" :title="$graph->error">{{ $graph->status->label() }}</x-ui.badge>
                                                 @if ($graph->built_at)
-                                                    <span class="text-xs text-muted-foreground" title="{{ number_format($graph->nodes_count) }} nodes · {{ number_format($graph->edges_count) }} edges">
-                                                        <code>{{ \Illuminate\Support\Str::substr($graph->commit_sha, 0, 7) }}</code> · {{ $graph->built_at->diffForHumans(short: true) }}
-                                                    </span>
+                                                    <span class="text-xs text-muted-foreground" title="{{ number_format($graph->nodes_count) }} nodes · {{ number_format($graph->edges_count) }} edges · {{ \Illuminate\Support\Str::substr($graph->commit_sha, 0, 7) }}">{{ $graph->built_at->diffForHumans(short: true) }}</span>
                                                 @endif
-                                                @if ($graph->status === \App\Enums\GraphStatus::Ready)
-                                                    <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.show', ['repository' => $repository, 'tab' => 'graph'])" wire:navigate title="Explore dependency graph">
-                                                        <x-ui.icon name="git-branch" />
-                                                    </x-ui.button>
-                                                @endif
-                                            @else
-                                                <span class="text-xs text-muted-foreground">Not built</span>
-                                            @endif
-                                            @if ($canUpdate && $this->graphAvailable)
-                                                <x-ui.button variant="ghost" size="icon" class="size-7" wire:click="rebuildGraph({{ $repository->id }})" title="Rebuild graph">
-                                                    <x-ui.icon name="refresh" />
-                                                </x-ui.button>
-                                            @endif
-                                        </div>
+                                            </div>
+                                        @else
+                                            <span class="text-xs text-muted-foreground">Not built</span>
+                                        @endif
                                     </td>
                                     <td class="p-2">
-                                        <div class="flex items-center gap-2">
-                                            <x-ui.switch
-                                                wire:key="docs-switch-{{ $repository->id }}-{{ $repository->auto_docs_enabled ? 1 : 0 }}"
-                                                :checked="$repository->auto_docs_enabled"
-                                                x-on:switch-change="$wire.setAutoDocs({{ $repository->id }}, $event.detail)"
-                                                :disabled="! $canUpdate"
-                                                aria-label="Automatic repository documentation"
-                                            />
+                                        @if ($repository->auto_docs_enabled)
+                                            <x-ui.badge :variant="filled($repository->document?->content) ? 'success' : 'secondary'">{{ filled($repository->document?->content) ? 'Ready' : 'Pending' }}</x-ui.badge>
+                                        @else
+                                            <span class="text-xs text-muted-foreground">Off</span>
+                                        @endif
+                                    </td>
+                                    <td class="p-2 text-right">
+                                        <x-ui.dropdown width="w-60" context="tr">
+                                            <x-slot:trigger>
+                                                <x-ui.button variant="ghost" size="icon" class="size-8" aria-label="Actions for {{ $repository->full_name }}">
+                                                    <x-ui.icon name="ellipsis" />
+                                                </x-ui.button>
+                                            </x-slot:trigger>
+
+                                            <x-ui.dropdown-item :href="route('repositories.show', $repository)" wire:navigate>
+                                                <x-ui.icon name="external-link" /> Open
+                                            </x-ui.dropdown-item>
+                                            @if ($graph?->status === \App\Enums\GraphStatus::Ready)
+                                                <x-ui.dropdown-item :href="route('repositories.show', ['repository' => $repository, 'tab' => 'graph'])" wire:navigate>
+                                                    <x-ui.icon name="git-branch" /> Explore code graph
+                                                </x-ui.dropdown-item>
+                                            @endif
                                             @if (filled($repository->document?->content))
-                                                <x-ui.button variant="ghost" size="icon" class="size-7" :href="route('repositories.show', ['repository' => $repository, 'tab' => 'documentation'])" wire:navigate title="View documentation">
-                                                    <x-ui.icon name="file-code" />
-                                                </x-ui.button>
+                                                <x-ui.dropdown-item :href="route('repositories.show', ['repository' => $repository, 'tab' => 'documentation'])" wire:navigate>
+                                                    <x-ui.icon name="file-code" /> View documentation
+                                                </x-ui.dropdown-item>
                                             @endif
-                                            @if ($canUpdate && $repository->auto_docs_enabled)
-                                                <x-ui.button variant="ghost" size="icon" class="size-7" wire:click="regenerateDocumentation({{ $repository->id }})" title="Regenerate documentation">
-                                                    <x-ui.icon name="refresh" />
-                                                </x-ui.button>
+
+                                            @if ($canUpdate)
+                                                <x-ui.separator class="my-1" />
+                                                @if ($this->graphAvailable)
+                                                    <x-ui.dropdown-item wire:click="rebuildGraph({{ $repository->id }})" x-on:click="open = false">
+                                                        <x-ui.icon name="refresh" /> {{ $graph ? 'Rebuild' : 'Build' }} code graph
+                                                    </x-ui.dropdown-item>
+                                                @endif
+                                                <x-ui.dropdown-item wire:click="setAutoDocs({{ $repository->id }}, {{ $repository->auto_docs_enabled ? 'false' : 'true' }})" x-on:click="open = false">
+                                                    <x-ui.icon name="file-code" /> {{ $repository->auto_docs_enabled ? 'Turn off' : 'Turn on' }} automatic docs
+                                                </x-ui.dropdown-item>
+                                                @if ($repository->auto_docs_enabled)
+                                                    <x-ui.dropdown-item wire:click="regenerateDocumentation({{ $repository->id }})" x-on:click="open = false">
+                                                        <x-ui.icon name="refresh" /> Regenerate documentation
+                                                    </x-ui.dropdown-item>
+                                                @endif
                                             @endif
-                                        </div>
+                                        </x-ui.dropdown>
                                     </td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
                 </div>
+
+                {{ $this->repositories->links() }}
             @endif
         </div>
     </x-ui.card>

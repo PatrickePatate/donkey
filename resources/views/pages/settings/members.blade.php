@@ -5,15 +5,19 @@ use App\Enums\OrganizationRole;
 use App\Models\Invitation;
 use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 new #[Title('Members')] class extends Component
 {
+    use WithPagination;
+
     public string $inviteEmail = '';
 
     public string $inviteRole = 'member';
@@ -25,12 +29,12 @@ new #[Title('Members')] class extends Component
     }
 
     /**
-     * @return Collection<int, User>
+     * @return LengthAwarePaginator<int, User>
      */
     #[Computed]
-    public function members(): Collection
+    public function members(): LengthAwarePaginator
     {
-        return $this->organization->members()->orderBy('name')->get();
+        return $this->organization->members()->orderBy('name')->paginate(25);
     }
 
     /**
@@ -72,7 +76,7 @@ new #[Title('Members')] class extends Component
             return;
         }
 
-        if (! $this->canManage($actorRole, $currentRole) || ! $actorRole->isAtLeast($newRole)) {
+        if (!$this->canManage($actorRole, $currentRole) || !$actorRole->isAtLeast($newRole)) {
             $this->dispatch('toast', message: "You can't assign that role.", variant: 'destructive');
 
             return;
@@ -94,10 +98,10 @@ new #[Title('Members')] class extends Component
         $member = $this->organization->members()->findOrFail($userId);
         $isSelf = $member->is(auth()->user());
 
-        if (! $isSelf) {
+        if (!$isSelf) {
             Gate::authorize('manageMembers', $this->organization);
 
-            if (! $this->canManage(auth()->user()->roleIn($this->organization), $member->pivot->role)) {
+            if (!$this->canManage(auth()->user()->roleIn($this->organization), $member->pivot->role)) {
                 $this->dispatch('toast', message: "You can't remove this member.", variant: 'destructive');
 
                 return;
@@ -191,13 +195,15 @@ new #[Title('Members')] class extends Component
                         </x-ui.button>
                     @else
                         <x-ui.badge variant="secondary">{{ $role->label() }}</x-ui.badge>
-                        @if ($member->is(auth()->user()) && $this->members->count() > 1)
+                        @if ($member->is(auth()->user()) && $this->members->total() > 1)
                             <x-ui.button variant="ghost" size="sm" wire:click="removeMember({{ $member->id }})" wire:confirm="Leave {{ $this->organization->name }}?">Leave</x-ui.button>
                         @endif
                     @endif
                 </li>
             @endforeach
         </ul>
+
+        {{ $this->members->links() }}
     </x-ui.card>
 
     @if ($canManage && $this->invitations->isNotEmpty())

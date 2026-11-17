@@ -22,7 +22,9 @@ class FindingVerifierService
 
     public int $outputTokens = 0;
 
-    public function __construct(private PullRequestClient $client, private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai) {}
+    public function __construct(private PullRequestClient $client, private UsageMeter $usage, private ModelRouter $models, private OrganizationAi $ai)
+    {
+    }
 
     /**
      * @param  array<int, ProposedFinding>  $findings  Keyed by an id the verdicts refer back to.
@@ -31,7 +33,7 @@ class FindingVerifierService
      */
     public function verify(ReviewRun $run, array $findings, ?ReviewKnowledge $knowledge = null, ?CodeExplorer $explorer = null): array
     {
-        if ($findings === [] || ! config('reviews.verifier.enabled')) {
+        if ($findings === [] || !config('reviews.verifier.enabled')) {
             return [];
         }
 
@@ -39,7 +41,7 @@ class FindingVerifierService
         $model = $this->models->verifierModel($organization, $findings);
 
         try {
-            $response = FindingVerifier::make()->withEffort($organization->ai_effort)->withCodeTools($explorer?->tools() ?? [])->prompt(
+            $response = FindingVerifier::make()->withEffort($organization->effortFor($this->models->isEco($organization, $model, 'verifier') ? 'eco' : 'verifier'))->withCodeTools($explorer?->tools() ?? [])->prompt(
                 $this->prompt($run, $findings, $knowledge),
                 provider: $this->ai->provider($organization),
                 model: $model,
@@ -69,7 +71,7 @@ class FindingVerifierService
         foreach ($response['verdicts'] ?? [] as $raw) {
             $id = (int) ($raw['id'] ?? -1);
 
-            if (! array_key_exists($id, $findings) || ! in_array($raw['verdict'] ?? null, ['confirmed', 'rejected'], true)) {
+            if (!array_key_exists($id, $findings) || !in_array($raw['verdict'] ?? null, ['confirmed', 'rejected'], true)) {
                 continue;
             }
 

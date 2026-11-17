@@ -13,13 +13,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
+use Laravel\Passport\Contracts\OAuthenticatable;
+use Laravel\Passport\HasApiTokens;
 
 #[Fillable(['name', 'email', 'password', 'current_organization_id'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens;
+    use HasFactory;
+    use Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -68,9 +72,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->roleIn($organization)?->isAtLeast($minimum) ?? false;
     }
 
+    /**
+     * The current organization, only while the user still belongs to it.
+     */
+    public function activeOrganization(): ?Organization
+    {
+        $organization = $this->currentOrganization;
+
+        return $organization !== null && $this->belongsToOrganization($organization) ? $organization : null;
+    }
+
     public function switchOrganization(Organization $organization): bool
     {
-        if (! $this->belongsToOrganization($organization)) {
+        if (!$this->belongsToOrganization($organization)) {
             return false;
         }
 

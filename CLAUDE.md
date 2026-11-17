@@ -165,3 +165,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Run `vendor/bin/pest` to call the test runner directly. It accepts the same file path and `--filter=testName` arguments.
 
 </laravel-boost-guidelines>
+
+## Donkey skill
+
+When you change the MCP server (`app/Mcp`: adding, removing or renaming a tool, or changing its parameters, output or scoping) or `routes/ai.php`, update the hand-written sections of `resources/views/skills/donkey.blade.php` in the same change: the description, Setup, and "When to use which tool". The Tools list there is generated from `DonkeyServer::TOOLS`. Repositories that already merged the skill keep the old version, so mention breaking changes in your summary.

@@ -76,7 +76,8 @@ services:
       REDIS_PORT: 6379
     volumes:
       - storage:/var/www/html/storage
-    command: php artisan migrate --force
+    # Passport (MCP OAuth) keys are created once in the storage volume; regenerating them would sign everyone out.
+    command: sh -c "{ [ -f storage/oauth-private.key ] || php artisan passport:keys; } && php artisan migrate --force"
     restart: "no"
     depends_on:
       pgsql:

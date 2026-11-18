@@ -16,7 +16,9 @@ use Throwable;
  */
 class ReviewPublisher
 {
-    public function __construct(private PullRequestClient $client) {}
+    public function __construct(private PullRequestClient $client)
+    {
+    }
 
     /**
      * Post the "review in progress" comment, or reuse the one an earlier run of the same pull request and agent left.
@@ -44,7 +46,7 @@ class ReviewPublisher
      */
     public function conclude(ReviewRun $run, string $message): void
     {
-        if (! $run->is_dry_run) {
+        if (!$run->is_dry_run) {
             $this->syncComment($run, "{$this->heading($run)}\n\n{$message}");
         }
     }
@@ -202,6 +204,13 @@ class ReviewPublisher
                 ($graph['test_gaps'] ?? 0) > 0 ? "{$graph['test_gaps']} without tests" : null,
                 $run->graph_risk_level !== null ? "structural risk {$run->graph_risk_level}" : null,
             ]));
+        }
+
+        if ($run->diff_metrics !== null) {
+            $metrics = $run->diff_metrics;
+            $lines[] = '';
+            $lines[] = "**Diff** · {$run->files_reviewed} ".str('file')->plural($run->files_reviewed)." · +{$metrics['lines_added']} −{$metrics['lines_removed']}"
+                .($metrics['comment_lines'] > 0 ? " · {$metrics['comment_lines']} comment ".str('line')->plural($metrics['comment_lines']).' added ('.round(100 * $metrics['comment_lines'] / $metrics['lines_added']).'%)' : '');
         }
 
         if ($suppressed > 0) {

@@ -97,7 +97,7 @@ class ReviewPullRequest implements ShouldQueue
             return;
         }
 
-        if (! $pullRequest->isOpen()) {
+        if (!$pullRequest->isOpen()) {
             $this->finish($run, ReviewRunStatus::Skipped, 'The pull request is no longer open.');
 
             return;
@@ -105,7 +105,7 @@ class ReviewPullRequest implements ShouldQueue
 
         $organization = $pullRequest->repository->organization;
         $blocked = match (true) {
-            ! $organization->hasAiKey() => ['The organization has no AI provider configured.', 'AI provider not configured', 'An owner can add a provider, API key and models in the organization settings in Donkey.'],
+            !$organization->hasAiKey() => ['The organization has no AI provider configured.', 'AI provider not configured', 'An owner can add a provider, API key and models in the organization settings in Donkey.'],
             $usage->isOverBudget($organization) => ['The organization reached its monthly AI budget.', 'Monthly AI budget reached', 'Reviews resume next month, or when an owner raises the budget in Donkey.'],
             default => null,
         };
@@ -113,7 +113,7 @@ class ReviewPullRequest implements ShouldQueue
         if ($blocked !== null) {
             $this->finish($run, ReviewRunStatus::Skipped, $blocked[0]);
 
-            if (! $run->is_dry_run) {
+            if (!$run->is_dry_run) {
                 $run->update(['github_check_run_id' => $client->createCheckRun($pullRequest, config('reviews.check_run_name'), $run->head_sha, route('pull-requests.show', $pullRequest))]);
                 $this->completeCheck($client, $run, 'skipped', $blocked[1], $blocked[2]);
             }
@@ -132,7 +132,7 @@ class ReviewPullRequest implements ShouldQueue
         // A retry after GitHub or the AI provider pushed back starts the analysis over.
         $run->findings()->delete();
 
-        if (! $run->is_dry_run && $run->github_check_run_id === null) {
+        if (!$run->is_dry_run && $run->github_check_run_id === null) {
             $checkRunName = config('reviews.check_run_name').($run->agent !== null ? " · {$run->agent->name}" : '');
             $checkRunId = $client->createCheckRun($pullRequest, $checkRunName, $run->head_sha, route('pull-requests.show', ['pullRequest' => $pullRequest, 'run' => $run->id]));
             $run->update(['github_check_run_id' => $checkRunId]);
@@ -150,7 +150,7 @@ class ReviewPullRequest implements ShouldQueue
                 $context = $context->onlyFiles(fn (FilePatch $file): bool => $agent->matchesPath($file->path));
             }
 
-            $run->update(['base_sha' => $context->baseSha, 'files_reviewed' => count($context->files)]);
+            $run->update(['base_sha' => $context->baseSha, 'files_reviewed' => count($context->files), 'diff_metrics' => $context->diffMetrics()]);
             $run->log(count($context->files).' '.str('file')->plural(count($context->files)).' to review');
 
             if ($context->files === []) {
@@ -297,7 +297,7 @@ class ReviewPullRequest implements ShouldQueue
      */
     private function explorer(ReviewRun $run, GraphContextResult $graph): ?CodeExplorer
     {
-        if (! config('reviews.tools.enabled') || $graph->baseGraph === null) {
+        if (!config('reviews.tools.enabled') || $graph->baseGraph === null) {
             return null;
         }
 
@@ -314,7 +314,7 @@ class ReviewPullRequest implements ShouldQueue
      */
     private function movesReviewBaseline(ReviewRun $run): bool
     {
-        return ! $run->is_dry_run && $run->agent === null;
+        return !$run->is_dry_run && $run->agent === null;
     }
 
     /**
@@ -359,7 +359,7 @@ class ReviewPullRequest implements ShouldQueue
             }
         }
 
-        if ($candidates === [] || ! $verifierEnabled) {
+        if ($candidates === [] || !$verifierEnabled) {
             return array_values($decisions);
         }
 
@@ -468,7 +468,7 @@ class ReviewPullRequest implements ShouldQueue
                     && $previous->code !== ''
                     && str_contains(implode("\n", $file->commentableLines), $previous->code);
 
-                if (! $stillThere) {
+                if (!$stillThere) {
                     $previous->update(['status' => FindingStatus::Outdated]);
                     $signals->record($previous, $this->suggestionWasApplied($previous, $file) ? SignalType::Applied : SignalType::Fixed);
                 }

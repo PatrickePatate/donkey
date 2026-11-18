@@ -37,6 +37,7 @@ use Illuminate\Support\Carbon;
  * @property int $findings_rejected
  * @property ?string $summary
  * @property int $files_reviewed
+ * @property ?array{lines_added: int, lines_removed: int, comment_lines: int} $diff_metrics
  * @property ?string $provider
  * @property ?string $model
  * @property int $tokens_input
@@ -51,7 +52,7 @@ use Illuminate\Support\Carbon;
  * @property-read PullRequest $pullRequest
  * @property-read ?ReviewAgent $agent
  */
-#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'review_agent_id', 'triggered_by', 'is_full', 'is_dry_run', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'github_comment_id', 'error', 'started_at', 'completed_at'])]
+#[Fillable(['pull_request_id', 'idempotency_key', 'head_sha', 'base_sha', 'trigger', 'review_agent_id', 'triggered_by', 'is_full', 'is_dry_run', 'status', 'stage', 'risk_score', 'risk_threshold', 'graph_status', 'graph_risk_level', 'graph_risk_score', 'graph_summary', 'diff_metrics', 'summary', 'files_reviewed', 'findings_rejected', 'provider', 'model', 'tokens_input', 'tokens_output', 'github_review_id', 'github_check_run_id', 'github_comment_id', 'error', 'started_at', 'completed_at'])]
 class ReviewRun extends Model
 {
     /** @use HasFactory<ReviewRunFactory> */
@@ -70,6 +71,7 @@ class ReviewRun extends Model
             'graph_status' => RunGraphStatus::class,
             'graph_risk_score' => 'integer',
             'graph_summary' => 'array',
+            'diff_metrics' => 'array',
             'findings_rejected' => 'integer',
             'files_reviewed' => 'integer',
             'tokens_input' => 'integer',

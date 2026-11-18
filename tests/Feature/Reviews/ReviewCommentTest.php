@@ -27,7 +27,7 @@ it('keeps one comment per pull request, posted when the review starts and edited
         ->and($edits)->toHaveCount(3)
         ->and($second->fresh()->github_comment_id)->toBe(555);
 
-    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH' && str_ends_with($request->url(), '/issues/comments/555') && str_contains($request['body'], 'No issues above the risk threshold'));
+    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH' && str_ends_with($request->url(), '/issues/comments/555') && str_contains($request['body'], 'No issues above the risk threshold') && str_contains($request['body'], '**Diff** · 1 file · +'));
 });
 
 it('posts a new comment when the previous one was deleted', function () {

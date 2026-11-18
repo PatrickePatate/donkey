@@ -22,7 +22,8 @@ final class ReviewContext
         public readonly array $skippedFiles,
         public readonly ?string $documentation = null,
         public readonly array $removedFiles = [],
-    ) {}
+    ) {
+    }
 
     /**
      * The same context restricted to the files that pass the filter, e.g. an agent's globs.
@@ -45,6 +46,30 @@ final class ReviewContext
     public function file(string $path): ?FilePatch
     {
         return $this->files[$path] ?? null;
+    }
+
+    /**
+     * Size of the change and how many added lines are comments, a cheap sign of over-commented code.
+     *
+     * @return array{lines_added: int, lines_removed: int, comment_lines: int}
+     */
+    public function diffMetrics(): array
+    {
+        $metrics = ['lines_added' => 0, 'lines_removed' => 0, 'comment_lines' => 0];
+
+        foreach ($this->files as $file) {
+            $metrics['lines_added'] += count($file->addedLines);
+            $metrics['lines_removed'] += preg_match_all('/^-/m', $file->patch);
+
+            foreach ($file->addedLines as $line) {
+                // shortcut: line-prefix detection, misses trailing comments and lines inside multi-line strings.
+                if (preg_match('~^\s*(//|#(?!\[)|/\*|\*|\{\{--|<!--)~', $file->commentableLines[$line]) === 1) {
+                    $metrics['comment_lines']++;
+                }
+            }
+        }
+
+        return $metrics;
     }
 
     /**

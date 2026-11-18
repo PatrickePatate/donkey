@@ -304,71 +304,83 @@ new class extends Component
         </div>
     </div>
 
-    @if (filled($pullRequest->body))
-        <div class="prose prose-sm max-w-3xl text-muted-foreground dark:prose-invert">{!! $this->markdown($pullRequest->body) !!}</div>
-    @endif
+    @php($run = $this->selectedRun)
+    <div @class(['grid grid-cols-[minmax(0,1fr)] gap-6', 'lg:grid-cols-[minmax(0,1fr)_16rem]' => $run !== null])>
+        <div class="grid min-w-0 content-start gap-6">
+        @if (filled($pullRequest->body))
+            <details class="group/description" open>
+                <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                    <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open/description:rotate-0" />
+                    Description
+                </summary>
+                <div class="prose prose-sm mt-3 max-w-none text-muted-foreground dark:prose-invert">{!! $this->markdown($pullRequest->body) !!}</div>
+            </details>
+        @endif
 
-    <details class="group" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
-        <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-            <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open:rotate-0" />
-            <x-ui.icon name="file-code" class="size-4" />
-            @if ($showFiles && $this->files !== null)
-                {{ count($this->files) }} {{ Str::plural('file', count($this->files)) }} changed
-            @else
-                Files changed
-            @endif
-        </summary>
+        <details class="group" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
+            <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open:rotate-0" />
+                <x-ui.icon name="file-code" class="size-4" />
+                @if ($showFiles && $this->files !== null)
+                    {{ count($this->files) }} {{ Str::plural('file', count($this->files)) }} changed
+                @else
+                    Files changed
+                @endif
+            </summary>
 
-        @if ($showFiles)
-            @if ($this->files === null)
-                <p class="mt-3 text-sm text-muted-foreground">Could not load the files from GitHub.</p>
-            @else
-                <ul class="mt-3 divide-y overflow-hidden rounded-md border">
-                    @foreach ($this->files as $file)
-                        <li wire:key="file-{{ $file['filename'] }}">
-                            <details class="group/file">
-                                <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
-                                    <x-ui.icon name="chevron-down" class="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/file:rotate-0" />
-                                    <code class="flex-1 truncate text-xs">{{ $file['filename'] }}</code>
-                                    @if ($file['status'] !== 'modified')
-                                        <x-ui.badge variant="secondary">{{ $file['status'] }}</x-ui.badge>
+            @if ($showFiles)
+                @if ($this->files === null)
+                    <p class="mt-3 text-sm text-muted-foreground">Could not load the files from GitHub.</p>
+                @else
+                    <ul class="mt-3 divide-y overflow-hidden rounded-md border">
+                        @foreach ($this->files as $file)
+                            <li wire:key="file-{{ $file['filename'] }}">
+                                <details class="group/file">
+                                    <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                                        <x-ui.icon name="chevron-down" class="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/file:rotate-0" />
+                                        <code class="flex-1 truncate text-xs">{{ $file['filename'] }}</code>
+                                        @if ($file['status'] !== 'modified')
+                                            <x-ui.badge variant="secondary">{{ $file['status'] }}</x-ui.badge>
+                                        @endif
+                                        <span class="text-xs tabular-nums text-green-600">+{{ $file['additions'] ?? 0 }}</span>
+                                        <span class="text-xs tabular-nums text-destructive">−{{ $file['deletions'] ?? 0 }}</span>
+                                    </summary>
+                                    @if (isset($file['patch']))
+                                        <pre class="overflow-x-auto border-t bg-muted/20 font-mono text-xs leading-5">@foreach (explode("\n", $file['patch']) as $line)<div @class([
+                                            'px-3',
+                                            'bg-green-500/10' => str_starts_with($line, '+'),
+                                            'bg-red-500/10' => str_starts_with($line, '-'),
+                                            'bg-blue-500/10 text-muted-foreground' => str_starts_with($line, '@@'),
+                                        ])>{{ $line === '' ? ' ' : $line }}</div>@endforeach</pre>
+                                    @else
+                                        <p class="border-t px-3 py-2 text-xs text-muted-foreground">No diff shown (binary or too large).</p>
                                     @endif
-                                    <span class="text-xs tabular-nums text-green-600">+{{ $file['additions'] ?? 0 }}</span>
-                                    <span class="text-xs tabular-nums text-destructive">−{{ $file['deletions'] ?? 0 }}</span>
-                                </summary>
-                                @if (isset($file['patch']))
-                                    <pre class="overflow-x-auto border-t bg-muted/20 font-mono text-xs leading-5">@foreach (explode("\n", $file['patch']) as $line)<div @class([
-                                        'px-3',
-                                        'bg-green-500/10' => str_starts_with($line, '+'),
-                                        'bg-red-500/10' => str_starts_with($line, '-'),
-                                        'bg-blue-500/10 text-muted-foreground' => str_starts_with($line, '@@'),
-                                    ])>{{ $line === '' ? ' ' : $line }}</div>@endforeach</pre>
-                                @else
-                                    <p class="border-t px-3 py-2 text-xs text-muted-foreground">No diff shown (binary or too large).</p>
-                                @endif
-                            </details>
-                        </li>
+                                </details>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            @else
+                <ul class="mt-3 grid gap-2" aria-label="Loading files">
+                    @foreach ([70, 45, 60] as $width)
+                        <li class="h-7 animate-pulse rounded-md bg-muted" style="width: {{ $width }}%"></li>
                     @endforeach
                 </ul>
             @endif
-        @endif
-    </details>
+        </details>
 
-    @if ($this->selectedRun === null)
-        <x-ui.card>
-            <div class="flex flex-col items-center gap-2 py-10 text-center">
-                <x-ui.icon name="shield" class="size-8 text-muted-foreground" />
-                <p class="font-medium">Not reviewed yet</p>
-                <p class="max-w-sm text-sm text-muted-foreground">
-                    Reviews start automatically on new commits when auto-review is on, or when someone comments
-                    <code>{{ '@'.$pullRequest->repository->organization->bot_handle }} review</code>.
-                </p>
-            </div>
-        </x-ui.card>
-    @else
-        @php($run = $this->selectedRun)
-        <div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
-            <div class="grid min-w-0 content-start gap-6">
+            @if ($run === null)
+            <x-ui.card>
+                <div class="flex flex-col items-center gap-2 py-10 text-center">
+                    <x-ui.icon name="shield" class="size-8 text-muted-foreground" />
+                    <p class="font-medium">Not reviewed yet</p>
+                    <p class="max-w-sm text-sm text-muted-foreground">
+                        Reviews start automatically on new commits when auto-review is on, or when someone comments
+                        <code>{{ '@'.$pullRequest->repository->organization->bot_handle }} review</code>.
+                    </p>
+                </div>
+            </x-ui.card>
+            @else
                 <x-ui.card>
                     <x-slot:title>
                         {{ $run->agent !== null ? $run->agent->name.' agent' : 'Review' }} #{{ $run->id }}
@@ -550,8 +562,10 @@ new class extends Component
                         </ol>
                     </x-ui.card>
                 @endif
-            </div>
+            @endif
+        </div>
 
+        @if ($run !== null)
             <div class="grid content-start gap-6">
                 @if ($run->graph_status)
                     @php($graph = $run->graph_summary ?? [])
@@ -658,6 +672,6 @@ new class extends Component
                     </ul>
                 </x-ui.card>
             </div>
-        </div>
-    @endif
+        @endif
+    </div>
 </div>

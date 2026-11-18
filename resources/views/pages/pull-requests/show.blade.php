@@ -335,7 +335,7 @@ new class extends Component
                     <ul class="mt-3 divide-y overflow-hidden rounded-md border">
                         @foreach ($this->files as $file)
                             <li wire:key="file-{{ $file['filename'] }}">
-                                <details class="group/file">
+                                <details class="group/file" x-data x-on:toggle.once="highlightDiff($el.querySelector('pre'), @js($file['filename']))">
                                     <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
                                         <x-ui.icon name="chevron-down" class="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/file:rotate-0" />
                                         <code class="flex-1 truncate text-xs">{{ $file['filename'] }}</code>
@@ -346,7 +346,7 @@ new class extends Component
                                         <span class="text-xs tabular-nums text-destructive">−{{ $file['deletions'] ?? 0 }}</span>
                                     </summary>
                                     @if (isset($file['patch']))
-                                        <pre class="overflow-x-auto border-t bg-muted/20 font-mono text-xs leading-5">@foreach (explode("\n", $file['patch']) as $line)<div @class([
+                                        <pre wire:ignore class="overflow-x-auto border-t bg-muted/20 font-mono text-xs leading-5">@foreach (explode("\n", $file['patch']) as $line)<div @class([
                                             'px-3',
                                             'bg-green-500/10' => str_starts_with($line, '+'),
                                             'bg-red-500/10' => str_starts_with($line, '-'),

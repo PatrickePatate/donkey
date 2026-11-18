@@ -26,6 +26,13 @@ class BackupRun extends Command
      */
     public const STORAGE_PATHS = ['app', 'oauth-private.key', 'oauth-public.key'];
 
+    /**
+     * Rebuildable paths left out of the archive: repository clones (gigabytes) and upload temp files.
+     *
+     * @var list<string>
+     */
+    public const EXCLUDED_PATHS = ['app/private/workspaces', 'app/private/tmp', 'app/private/livewire-tmp'];
+
     public function handle(): int
     {
         $directory = storage_path('backups');
@@ -48,6 +55,7 @@ class BackupRun extends Command
             Process::timeout(3600)->run([
                 'tar', '-czf', $archive,
                 '-C', $workDirectory, 'database.dump',
+                ...array_map(fn (string $path): string => "--exclude={$path}", self::EXCLUDED_PATHS),
                 '-C', storage_path(), ...$storagePaths,
             ])->throw();
         } finally {

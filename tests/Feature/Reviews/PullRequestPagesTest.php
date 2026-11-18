@@ -13,6 +13,7 @@ use App\Models\PullRequest;
 use App\Models\Repository;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
+use App\Services\GitHub\PullRequestClient;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -185,4 +186,20 @@ it('shows tool calls in the live log with their tool, arguments and outcome', fu
         ->get(route('pull-requests.show', $pullRequest))
         ->assertOk()
         ->assertSeeInOrder(['Asking claude-sonnet-5-5', 'search_code', '&quot;-&gt;charge(&quot; in app/', '→ 3 matches'], false);
+});
+
+it('shows the pull request description and its diff on demand', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization, ['body' => 'Adds **invoices**.']);
+    $this->mock(PullRequestClient::class)->shouldReceive('files')->once()->andReturn([
+        ['filename' => 'app/Invoice.php', 'status' => 'added', 'additions' => 1, 'deletions' => 0, 'patch' => "@@ -0,0 +1 @@\n+<?php"],
+    ]);
+
+    Livewire::actingAs($user)
+        ->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
+        ->assertSeeHtml('<strong>invoices</strong>')
+        ->assertDontSee('app/Invoice.php')
+        ->set('showFiles', true)
+        ->assertSee('app/Invoice.php')
+        ->assertSee('+<?php');
 });

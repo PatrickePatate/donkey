@@ -11,6 +11,7 @@ use App\Models\ReviewAgent;
 use App\Models\ReviewFinding;
 use App\Models\ReviewRun;
 use App\Models\ReviewRunLog;
+use App\Services\GitHub\PullRequestClient;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -130,7 +131,7 @@ new class extends Component
     #[Computed]
     public function logs(): Collection
     {
-        return $this->selectedRun?->logs()->orderBy('id')->limit(500)->get() ?? new Collection;
+        return $this->selectedRun?->logs()->orderBy('id')->limit(500)->get() ?? new Collection();
     }
 
     /**
@@ -159,7 +160,7 @@ new class extends Component
     public function findings(): Collection
     {
         if ($this->selectedRun === null) {
-            return new Collection;
+            return new Collection();
         }
 
         return $this->selectedRun->findings()
@@ -179,7 +180,7 @@ new class extends Component
     {
         Gate::authorize('review', $this->pullRequest);
 
-        if (! $this->pullRequest->isOpen()) {
+        if (!$this->pullRequest->isOpen()) {
             $this->dispatch('toast', message: 'Only open pull requests can be reviewed.', variant: 'destructive');
 
             return;
@@ -199,7 +200,7 @@ new class extends Component
 
         $agent = $this->agents->firstWhere('id', $agentId);
 
-        if ($agent === null || ! $this->pullRequest->isOpen()) {
+        if ($agent === null || !$this->pullRequest->isOpen()) {
             $this->dispatch('toast', message: 'This agent cannot run on this pull request.', variant: 'destructive');
 
             return;
@@ -217,9 +218,28 @@ new class extends Component
     {
         Gate::authorize('review', $this->pullRequest);
 
-        $this->pullRequest->update(['auto_review_paused' => ! $this->pullRequest->auto_review_paused]);
+        $this->pullRequest->update(['auto_review_paused' => !$this->pullRequest->auto_review_paused]);
 
         $this->dispatch('toast', message: $this->pullRequest->auto_review_paused ? 'Automatic reviews paused on this pull request.' : 'Automatic reviews resumed.', variant: 'success');
+    }
+
+    public bool $showFiles = false;
+
+    /**
+     * Files changed on GitHub, fetched only once the files panel is opened; null when GitHub failed.
+     *
+     * @return ?list<array<string, mixed>>
+     */
+    #[Computed(persist: true, seconds: 300)]
+    public function files(): ?array
+    {
+        try {
+            return app(PullRequestClient::class)->files($this->pullRequest);
+        } catch (Exception $exception) {
+            report($exception);
+
+            return null;
+        }
     }
 
     public function markdown(string $text): string
@@ -283,6 +303,56 @@ new class extends Component
             @endcan
         </div>
     </div>
+
+    @if (filled($pullRequest->body))
+        <div class="prose prose-sm max-w-3xl text-muted-foreground dark:prose-invert">{!! $this->markdown($pullRequest->body) !!}</div>
+    @endif
+
+    <details class="group" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
+        <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open:rotate-0" />
+            <x-ui.icon name="file-code" class="size-4" />
+            @if ($showFiles && $this->files !== null)
+                {{ count($this->files) }} {{ Str::plural('file', count($this->files)) }} changed
+            @else
+                Files changed
+            @endif
+        </summary>
+
+        @if ($showFiles)
+            @if ($this->files === null)
+                <p class="mt-3 text-sm text-muted-foreground">Could not load the files from GitHub.</p>
+            @else
+                <ul class="mt-3 divide-y overflow-hidden rounded-md border">
+                    @foreach ($this->files as $file)
+                        <li wire:key="file-{{ $file['filename'] }}">
+                            <details class="group/file">
+                                <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                                    <x-ui.icon name="chevron-down" class="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/file:rotate-0" />
+                                    <code class="flex-1 truncate text-xs">{{ $file['filename'] }}</code>
+                                    @if ($file['status'] !== 'modified')
+                                        <x-ui.badge variant="secondary">{{ $file['status'] }}</x-ui.badge>
+                                    @endif
+                                    <span class="text-xs tabular-nums text-green-600">+{{ $file['additions'] ?? 0 }}</span>
+                                    <span class="text-xs tabular-nums text-destructive">−{{ $file['deletions'] ?? 0 }}</span>
+                                </summary>
+                                @if (isset($file['patch']))
+                                    <pre class="overflow-x-auto border-t bg-muted/20 font-mono text-xs leading-5">@foreach (explode("\n", $file['patch']) as $line)<div @class([
+                                        'px-3',
+                                        'bg-green-500/10' => str_starts_with($line, '+'),
+                                        'bg-red-500/10' => str_starts_with($line, '-'),
+                                        'bg-blue-500/10 text-muted-foreground' => str_starts_with($line, '@@'),
+                                    ])>{{ $line === '' ? ' ' : $line }}</div>@endforeach</pre>
+                                @else
+                                    <p class="border-t px-3 py-2 text-xs text-muted-foreground">No diff shown (binary or too large).</p>
+                                @endif
+                            </details>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        @endif
+    </details>
 
     @if ($this->selectedRun === null)
         <x-ui.card>
@@ -543,6 +613,12 @@ new class extends Component
                         <dd class="text-right tabular-nums">{{ $run->findings_rejected }}</dd>
                         <dt class="text-muted-foreground">Files</dt>
                         <dd class="text-right tabular-nums">{{ $run->files_reviewed }}</dd>
+                        @if ($run->diff_metrics !== null)
+                            <dt class="text-muted-foreground">Lines</dt>
+                            <dd class="text-right tabular-nums"><span class="text-green-600">+{{ $run->diff_metrics['lines_added'] }}</span> <span class="text-destructive">−{{ $run->diff_metrics['lines_removed'] }}</span></dd>
+                            <dt class="text-muted-foreground">Comment lines added</dt>
+                            <dd class="text-right tabular-nums">{{ $run->diff_metrics['comment_lines'] }}{{ $run->diff_metrics['lines_added'] > 0 ? ' ('.round(100 * $run->diff_metrics['comment_lines'] / $run->diff_metrics['lines_added']).'%)' : '' }}</dd>
+                        @endif
                         <dt class="text-muted-foreground">Tokens</dt>
                         <dd class="text-right tabular-nums">{{ number_format($run->tokens_input + $run->tokens_output) }}</dd>
                         <dt class="text-muted-foreground">Estimated cost</dt>

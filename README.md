@@ -94,7 +94,7 @@ To upgrade, run `./deploy.sh` again (or `git pull` and the same `up -d --build` 
 
 #### Backups
 
-`php artisan backup:run` writes `storage/backups/donkey-<date>.tar.gz` with a `pg_dump` of the database and the files that cannot be rebuilt: `storage/app` (organization avatars, the GitHub App key, `generated.env` holding the generated `APP_KEY` and Reverb keys) and the MCP OAuth keys. The scheduler runs it every night at 01:30 in production and keeps the last 7 (`--keep=N` to change). Redis is not backed up: it only holds queues, cache and sessions, so the worst a loss costs is in-flight jobs and a new sign-in.
+`php artisan backup:run` writes `storage/backups/donkey-<date>.tar.gz` with a `pg_dump` of the database and the files that cannot be rebuilt: `storage/app` (organization avatars, the GitHub App key, `generated.env` holding the generated `APP_KEY` and Reverb keys, built code graphs; repository clones are left out, they are cloned again on demand) and the MCP OAuth keys. The scheduler runs it every night at 01:30 in production and keeps the last 7 (`--keep=N` to change). Redis is not backed up: it only holds queues, cache and sessions, so the worst a loss costs is in-flight jobs and a new sign-in.
 
 The archive contains secrets and sits in the same `storage` volume as the data, so keep a copy off the server. To have each backup also uploaded to S3 (or any S3-compatible storage: R2, Scaleway, MinIO…) under `backups/`, with the same retention, add to `.env`:
 

@@ -23,7 +23,8 @@ test('backup dumps the database and archives the storage files that matter', fun
         && in_array('--format=custom', $process->command)
         && $process->environment['PGPASSWORD'] === config('database.connections.pgsql.password'));
     Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'tar'
-        && array_slice($process->command, -2) === ['app', 'oauth-private.key']);
+        && array_slice($process->command, -2) === ['app', 'oauth-private.key']
+        && in_array('--exclude=app/private/workspaces', $process->command));
     expect(File::directories($this->storage.'/backups'))->toBeEmpty();
 });
 

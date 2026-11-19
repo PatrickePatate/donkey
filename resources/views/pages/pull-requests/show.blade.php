@@ -308,7 +308,7 @@ new class extends Component
     <div @class(['grid grid-cols-[minmax(0,1fr)] gap-6', 'lg:grid-cols-[minmax(0,1fr)_16rem]' => $run !== null])>
         <div class="grid min-w-0 content-start gap-6">
         @if (filled($pullRequest->body))
-            <details class="group/description" open>
+            <details class="group/description min-w-0" open>
                 <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
                     <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open/description:rotate-0" />
                     Description
@@ -317,7 +317,7 @@ new class extends Component
             </details>
         @endif
 
-        <details class="group" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
+        <details class="group min-w-0" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
             <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
                 <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open:rotate-0" />
                 <x-ui.icon name="file-code" class="size-4" />

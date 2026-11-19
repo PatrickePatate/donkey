@@ -31,7 +31,9 @@ final class ReviewCommand
      * @param  string  $arguments  The agent slug for "run", the question for "ask", the reason for "ignore",
      *                             what to remember for "remember".
      */
-    public function __construct(public readonly BotCommandType $type, public readonly string $arguments = '') {}
+    public function __construct(public readonly BotCommandType $type, public readonly string $arguments = '')
+    {
+    }
 
     /**
      * Find the first "@handle …" mention in a comment, ignoring quoted and fenced text.
@@ -50,7 +52,7 @@ final class ReviewCommand
                 continue;
             }
 
-            $text = trim($matches[1]);
+            $text = (string) preg_replace('/^full-review\b/i', 'full review', trim($matches[1]));
             $phrase = strtolower(rtrim((string) preg_replace('/\s+/', ' ', $text), ' .!'));
 
             if ($phrase === '') {

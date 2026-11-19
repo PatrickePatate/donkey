@@ -8,6 +8,8 @@ it('parses commands addressed to the bot', function (string $body, ?BotCommandTy
 })->with([
     'review' => ['@donkey review', BotCommandType::Review],
     'full review, any case' => ['Hey @Donkey Full Review please', BotCommandType::FullReview],
+    'full review, hyphenated' => ['@donkey full-review', BotCommandType::FullReview],
+    'full review, hyphenated with focus' => ['@donkey full-review security', BotCommandType::FullReview],
     'run an agent' => ['@donkey run security', BotCommandType::RunAgent],
     'list agents' => ['@donkey agents', BotCommandType::ListAgents],
     'ignore' => ['@donkey ignore', BotCommandType::Ignore],

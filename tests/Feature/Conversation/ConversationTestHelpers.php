@@ -47,7 +47,7 @@ function deliverIssueComment(GithubInstallation $installation, Repository $repos
 /**
  * Deliver a reply in an inline review thread started by comment $threadCommentId.
  */
-function deliverThreadReply(GithubInstallation $installation, PullRequest $pullRequest, int $threadCommentId, string $body, int $commentId = 556): WebhookEvent
+function deliverThreadReply(GithubInstallation $installation, PullRequest $pullRequest, int $threadCommentId, string $body, int $commentId = 556, string $association = 'MEMBER'): WebhookEvent
 {
     return deliverConversationEvent('pull_request_review_comment', $installation, [
         'action' => 'created',
@@ -57,7 +57,7 @@ function deliverThreadReply(GithubInstallation $installation, PullRequest $pullR
             'id' => $commentId,
             'in_reply_to_id' => $threadCommentId,
             'body' => $body,
-            'author_association' => 'MEMBER',
+            'author_association' => $association,
             'user' => ['login' => 'grace'],
             'path' => 'app/Billing.php',
             'line' => 7,

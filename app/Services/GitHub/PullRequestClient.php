@@ -159,6 +159,18 @@ class PullRequestClient
     }
 
     /**
+     * Whether the user can push to the pull request's repository. Webhook payloads label private org members
+     * as CONTRIBUTOR on review comments, so this asks GitHub for the real permission instead.
+     */
+    public function hasWriteAccess(PullRequest $pullRequest, string $login): bool
+    {
+        $response = $this->request($pullRequest)
+            ->get($this->repoPath($pullRequest).'/collaborators/'.rawurlencode($login).'/permission');
+
+        return $response->successful() && in_array($response->json('permission'), ['admin', 'maintain', 'write'], true);
+    }
+
+    /**
      * Comment on the pull request conversation.
      *
      * @return array<string, mixed>

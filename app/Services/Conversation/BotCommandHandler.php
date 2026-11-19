@@ -13,6 +13,7 @@ use App\Events\ConversationUpdated;
 use App\Jobs\AnswerPullRequestComment;
 use App\Models\RepositoryMemory;
 use App\Models\ReviewAgent;
+use App\Services\GitHub\PullRequestClient;
 use App\Services\Knowledge\SignalRecorder;
 use App\Services\Review\ReviewCommand;
 use Illuminate\Support\Str;
@@ -33,16 +34,26 @@ class BotCommandHandler
         private StartReview $startReview,
         private CommentResponder $responder,
         private SignalRecorder $signals,
-    ) {}
+        private PullRequestClient $client,
+    ) {
+    }
 
     /**
-     * Whether the comment's author may run this command at all; unauthorized comments are silently ignored.
+     * Whether the comment's author may run this command at all; the payload's association is checked first, then the author's real repository permission
+     * (private org members show up as CONTRIBUTOR on review comments); unauthorized comments get a thumbs-down reaction and are otherwise ignored.
      */
     public function isAllowed(ReviewCommand $command, IncomingComment $comment): bool
     {
         $allowed = $command->type->requiresWriteAccess() ? self::WRITE_ASSOCIATIONS : self::READ_ASSOCIATIONS;
 
-        return in_array($comment->authorAssociation, $allowed, true);
+        if (in_array($comment->authorAssociation, $allowed, true) || $this->client->hasWriteAccess($comment->pullRequest, $comment->authorLogin)) {
+            return true;
+        }
+
+        // A thumbs-down tells the author the command was seen but refused, instead of silence.
+        $this->responder->react($comment, '-1');
+
+        return false;
     }
 
     public function handle(ReviewCommand $command, IncomingComment $comment): void
@@ -62,7 +73,7 @@ class BotCommandHandler
 
     private function review(ReviewCommand $command, IncomingComment $comment): void
     {
-        if (! $comment->pullRequest->isOpen()) {
+        if (!$comment->pullRequest->isOpen()) {
             $this->responder->replyTo($comment, 'This pull request is closed, so there is nothing to review.');
 
             return;
@@ -89,7 +100,7 @@ class BotCommandHandler
             return;
         }
 
-        if (! $comment->pullRequest->isOpen()) {
+        if (!$comment->pullRequest->isOpen()) {
             $this->responder->replyTo($comment, 'This pull request is closed, so there is nothing to review.');
 
             return;
@@ -160,7 +171,7 @@ class BotCommandHandler
             ],
         );
 
-        if (! $memory->wasRecentlyCreated) {
+        if (!$memory->wasRecentlyCreated) {
             return;
         }
 
@@ -205,7 +216,7 @@ class BotCommandHandler
             ],
         );
 
-        if (! $message->wasRecentlyCreated) {
+        if (!$message->wasRecentlyCreated) {
             return;
         }
 

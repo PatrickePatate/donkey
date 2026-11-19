@@ -33,6 +33,7 @@ beforeEach(function () {
 
     Http::fake([
         'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'installation-token'], 201),
+        'api.github.com/repos/*/collaborators/*/permission' => fn () => Http::response(['permission' => $this->permission ?? 'read']),
         'api.github.com/*' => Http::response(['id' => 999], 201),
     ]);
 });
@@ -83,6 +84,20 @@ it('dismisses a finding from its thread', function () {
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/pulls/7/comments/9001/replies')
         && str_contains($request['body'], 'Dismissed'));
 });
+
+it('checks the real permission of authors labelled as contributors', function (string $permission, FindingStatus $status) {
+    $this->permission = $permission;
+    $finding = ReviewFinding::factory()
+        ->for(ReviewRun::factory()->for($this->pullRequest), 'reviewRun')
+        ->create(['github_comment_id' => 9001]);
+
+    deliverThreadReply($this->installation, $this->pullRequest, 9001, '@donkey false positive', association: 'CONTRIBUTOR');
+
+    expect($finding->fresh()->status)->toBe($status);
+})->with([
+    'private org member with write access' => ['write', FindingStatus::Dismissed],
+    'read-only contributor' => ['read', FindingStatus::Published],
+]);
 
 it('explains where to use ignore when it is not in a finding thread', function () {
     deliverIssueComment($this->installation, $this->repository, '@donkey ignore');
@@ -147,6 +162,7 @@ it('lets past contributors list agents but not spend tokens', function () {
         ->and(ConversationMessage::count())->toBe(0);
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/issues/7/comments')
         && str_contains($request['body'], 'No review agents are set up'));
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/issues/comments/558/reactions') && $request['content'] === '-1');
 });
 
 it('ignores thread replies that do not mention the bot', function () {

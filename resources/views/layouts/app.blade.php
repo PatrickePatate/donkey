@@ -3,11 +3,17 @@
     $organization = $user->currentOrganization;
     $navigation = [
         ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => 'layout-dashboard'],
-        ['label' => 'Pull requests', 'route' => 'pull-requests.*', 'href' => 'pull-requests.index', 'icon' => 'git-pull-request'],
+        ['label' => 'Pull requests', 'route' => 'pull-requests.*', 'href' => 'pull-requests.index', 'icon' => 'git-pull-request', 'badge' => $organization
+            ? \App\Models\PullRequest::query()->whereIn('repository_id', $organization->repositories()->select('id'))->where('state', 'open')->count()
+            : 0, 'badgeTitle' => 'Open pull requests'],
         ['label' => 'Repositories', 'route' => 'repositories.index', 'icon' => 'git-branch'],
-        ['label' => 'Security', 'route' => 'security.index', 'icon' => 'shield'],
+        ['label' => 'Security', 'route' => 'security.index', 'icon' => 'shield', 'badge' => $organization
+            ? \App\Models\SecurityAdvisory::query()->whereIn('repository_id', $organization->repositories()->select('id'))->distinct()->count('repository_id')
+            : 0, 'badgeTitle' => 'Repositories with known vulnerabilities', 'badgeTone' => 'danger'],
         ['label' => 'Agents', 'route' => 'agents.*', 'href' => 'agents.index', 'icon' => 'bot'],
-        ['label' => 'Knowledge', 'route' => 'knowledge.*', 'href' => 'knowledge.index', 'icon' => 'lightbulb'],
+        ['label' => 'Knowledge', 'route' => 'knowledge.*', 'href' => 'knowledge.index', 'icon' => 'lightbulb', 'badge' => $organization
+            ? $organization->learnings()->where('status', \App\Enums\LearningStatus::Proposed)->count()
+            : 0, 'badgeTitle' => 'Proposed learnings to review'],
     ];
     $settings = [
         ['label' => 'Organization', 'route' => 'settings.organization', 'icon' => 'settings'],
@@ -70,23 +76,32 @@
                         </x-ui.dropdown-item>
                     </x-ui.dropdown>
                 @endif
+                <button type="button" x-on:click="$dispatch('open-command-palette')" class="mt-2 flex w-full items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm text-muted-foreground shadow-xs transition-colors hover:text-foreground">
+                    <x-ui.icon name="search" />
+                    <span class="flex-1 text-left">Search…</span>
+                    <kbd class="rounded border px-1.5 font-mono text-[10px]">⌘K</kbd>
+                </button>
             </div>
 
             <nav class="flex flex-1 flex-col gap-6 px-3 py-2 text-sm">
                 @foreach (['Platform' => $navigation, 'Settings' => $settings] as $group => $items)
                     <div class="grid gap-1">
-                        <p class="px-2 text-xs font-medium text-muted-foreground">{{ $group }}</p>
+                        <p class="px-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">{{ $group }}</p>
                         @foreach ($items as $item)
                             <a
                                 href="{{ route($item['href'] ?? $item['route']) }}"
                                 wire:navigate
                                 @class([
-                                    'flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent hover:text-accent-foreground',
-                                    'bg-accent font-medium text-accent-foreground' => request()->routeIs($item['route']),
+                                    'flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
+                                    'bg-accent font-medium text-foreground' => request()->routeIs($item['route']),
+                                    'text-muted-foreground hover:bg-accent/60 hover:text-foreground' => ! request()->routeIs($item['route']),
                                 ])
                             >
                                 <x-ui.icon :name="$item['icon']" />
-                                {{ $item['label'] }}
+                                <span class="flex-1">{{ $item['label'] }}</span>
+                                @if (($item['badge'] ?? 0) > 0)
+                                    <span title="{{ $item['badgeTitle'] }}" @class(['rounded-md px-1.5 py-0.5 text-xs font-medium tabular-nums', 'bg-destructive/10 text-destructive' => ($item['badgeTone'] ?? null) === 'danger', 'bg-muted text-muted-foreground' => ($item['badgeTone'] ?? null) !== 'danger'])>{{ $item['badge'] }}</span>
+                                @endif
                             </a>
                         @endforeach
                     </div>
@@ -97,7 +112,7 @@
                 <x-ui.dropdown align="top" width="w-58">
                     <x-slot:trigger>
                         <button type="button" class="flex w-full items-center gap-2 rounded-md p-2 text-left hover:bg-accent">
-                            <x-ui.avatar :initials="$user->initials()" />
+                            <x-ui.avatar :src="$user->avatarUrl()" :initials="$user->initials()" />
                             <span class="grid flex-1 text-sm leading-tight">
                                 <span class="truncate font-medium">{{ $user->name }}</span>
                                 <span class="truncate text-xs text-muted-foreground">{{ $user->email }}</span>
@@ -106,6 +121,9 @@
                         </button>
                     </x-slot:trigger>
 
+                    <x-ui.dropdown-item :href="route('settings.profile')" wire:navigate>
+                        <x-ui.icon name="user" /> Profile
+                    </x-ui.dropdown-item>
                     <x-ui.dropdown-item x-on:click="
                         const dark = ! document.documentElement.classList.contains('dark');
                         document.documentElement.classList.toggle('dark', dark);
@@ -130,15 +148,19 @@
                     <x-ui.icon name="layout-dashboard" />
                     <span class="sr-only">Open navigation</span>
                 </x-ui.button>
-                <span class="font-semibold">{{ config('app.name') }}</span>
+                <span class="flex-1 font-semibold">{{ config('app.name') }}</span>
+                <x-ui.button variant="ghost" size="icon" x-on:click="$dispatch('open-command-palette')" aria-label="Search">
+                    <x-ui.icon name="search" />
+                </x-ui.button>
             </header>
 
-            <main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-8">
+            <main class="mx-auto w-full max-w-7xl flex-1 p-4 md:p-8">
                 {{ $slot }}
             </main>
         </div>
     </div>
 
+    <livewire:command-palette />
     <x-ui.toaster />
     @livewireScripts
 </body>

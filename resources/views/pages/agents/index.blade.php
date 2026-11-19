@@ -60,7 +60,7 @@ new #[Title('Agents')] class extends Component
 <div class="grid gap-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="grid gap-1">
-            <h1 class="text-2xl font-semibold tracking-tight">Agents</h1>
+            <h1 class="text-2xl tracking-tight">Agents</h1>
             <p class="text-sm text-muted-foreground">
                 Specialist reviewers with your own instructions. Run one with
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ '@'.$this->organization->bot_handle }} run &lt;agent&gt;</code>
@@ -89,7 +89,7 @@ new #[Title('Agents')] class extends Component
         @endcan
     </div>
 
-    <x-ui.card>
+    <div class="table-wrap">
         @if ($this->agents->isEmpty())
             <div class="flex flex-col items-center gap-2 py-12 text-center">
                 <x-ui.icon name="bot" class="size-8 text-muted-foreground" />
@@ -100,39 +100,39 @@ new #[Title('Agents')] class extends Component
             </div>
         @else
             <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="table">
                     <thead>
-                        <tr class="border-b text-left text-muted-foreground">
-                            <th class="h-10 px-2 font-medium">Agent</th>
-                            <th class="h-10 px-2 font-medium">Scope</th>
-                            <th class="h-10 px-2 font-medium">Files</th>
-                            <th class="h-10 px-2 font-medium">Runs</th>
-                            <th class="h-10 px-2 font-medium">Enabled</th>
+                        <tr>
+                            <th>Agent</th>
+                            <th>Scope</th>
+                            <th>Files</th>
+                            <th>Runs</th>
+                            <th>Enabled</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($this->agents as $agent)
                             <tr wire:key="agent-{{ $agent->id }}" class="border-b last:border-0">
-                                <td class="p-2">
+                                <td>
                                     <a href="{{ route('agents.edit', $agent) }}" wire:navigate class="grid gap-0.5 hover:underline">
                                         <span class="font-medium">{{ $agent->name }}</span>
                                         <span class="font-mono text-xs text-muted-foreground">{{ $agent->slug }}</span>
                                     </a>
                                 </td>
-                                <td class="p-2">
+                                <td>
                                     @if ($agent->repository_id === null)
                                         <x-ui.badge variant="secondary">Organization</x-ui.badge>
                                     @else
                                         <x-ui.badge variant="outline">{{ $agent->repository?->full_name }}</x-ui.badge>
                                     @endif
                                 </td>
-                                <td class="max-w-56 truncate p-2 font-mono text-xs text-muted-foreground">
+                                <td class="max-w-56 truncate font-mono text-xs text-muted-foreground">
                                     {{ blank($agent->file_globs) ? 'All files' : implode(', ', $agent->file_globs) }}
                                 </td>
-                                <td class="p-2">
+                                <td>
                                     {{ $agent->run_on_auto_review ? 'Automatic + on demand' : 'On demand' }}
                                 </td>
-                                <td class="p-2">
+                                <td>
                                     <x-ui.switch
                                         :checked="$agent->enabled"
                                         :disabled="! auth()->user()->can('update', $agent)"
@@ -146,7 +146,9 @@ new #[Title('Agents')] class extends Component
                 </table>
             </div>
 
-            {{ $this->agents->links() }}
+            @if ($this->agents->hasPages())
+                <div class="table-foot">{{ $this->agents->links() }}</div>
+            @endif
         @endif
-    </x-ui.card>
+    </div>
 </div>

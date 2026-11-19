@@ -142,3 +142,22 @@ it('shows review quality on the dashboard', function () {
         ->assertSee('33%')
         ->assertSee('1 proposed learning to review');
 });
+
+test('the dashboard scopes review quality to the chosen period and compares it to the previous one', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $run = ReviewRun::factory()->for(PullRequest::factory()->for(knowledgeRepository($organization)))->create();
+
+    $recent = ReviewFinding::factory()->for($run, 'reviewRun')->create(['created_at' => now()->subDays(3)]);
+    FindingSignal::factory()->for($recent, 'finding')->create(['type' => SignalType::Applied]);
+    $older = ReviewFinding::factory()->for($run, 'reviewRun')->create(['created_at' => now()->subDays(10)]);
+    FindingSignal::factory()->for($older, 'finding')->create(['type' => SignalType::IgnoredOnMerge]);
+
+    expect(app(QualityMetrics::class)->forOrganization($organization, 7))->posted->toBe(1)->pull_requests->toBe(1)->acceptance_rate->toBe(100)
+        ->and(app(QualityMetrics::class)->forOrganization($organization, 7, 7))->posted->toBe(1)->acceptance_rate->toBe(0);
+
+    Livewire::actingAs($user)->test('pages::dashboard')
+        ->set('days', 7)
+        ->assertSee('+100 pts')
+        ->set('days', 12345)
+        ->assertSet('days', 30);
+});

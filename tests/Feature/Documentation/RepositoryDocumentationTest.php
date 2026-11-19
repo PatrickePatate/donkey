@@ -116,7 +116,7 @@ it('generates documentation from the repository tree and selected source files',
 
     RepositoryDocumenter::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Repository overview from the README.')
         && $prompt->contains('Payment service source details.')
-        && ! $prompt->contains('This Markdown source should not be sampled.'));
+        && !$prompt->contains('This Markdown source should not be sampled.'));
 });
 
 it('bounds the repository tree and sampled file contents by configuration', function () {
@@ -142,9 +142,9 @@ it('bounds the repository tree and sampled file contents by configuration', func
     runRepositoryDocumentation($repository);
 
     RepositoryDocumenter::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('1234567890')
-        && ! $prompt->contains('1234567890e')
-        && ! $prompt->contains('app/PaymentService.php')
-        && ! $prompt->contains('This source must not fit'));
+        && !$prompt->contains('1234567890e')
+        && !$prompt->contains('app/PaymentService.php')
+        && !$prompt->contains('This source must not fit'));
 });
 
 it('does not contact GitHub or the model when automatic documentation is disabled', function () {
@@ -363,5 +363,19 @@ it('excludes repository documentation from review prompts when disabled', functi
 
     app(ReviewAnalyzer::class)->analyze($this->pullRequest, $context);
 
-    CodeReviewer::assertPrompted(fn (AgentPrompt $prompt): bool => ! $prompt->contains('Disabled repository documentation marker.'));
+    CodeReviewer::assertPrompted(fn (AgentPrompt $prompt): bool => !$prompt->contains('Disabled repository documentation marker.'));
+});
+
+it('toggles automatic documentation from the repository page', function () {
+    [$member, $organization] = userInOrganization(OrganizationRole::Member);
+    $installation = GithubInstallation::factory()->for($organization)->create();
+    $repository = Repository::factory()->for($installation, 'installation')->create(['organization_id' => $organization->id]);
+    Queue::fake();
+
+    Livewire::actingAs($member)
+        ->test('pages::repositories.show', ['repository' => $repository->id])
+        ->call('setAutoDocs', true);
+
+    expect($repository->fresh()->auto_docs_enabled)->toBeTrue();
+    Queue::assertPushed(GenerateRepositoryDocumentation::class, 1);
 });

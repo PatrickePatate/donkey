@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\SetAutoDocs;
 use App\Jobs\BuildRepositoryGraph;
 use App\Jobs\GenerateRepositoryDocumentation;
 use App\Jobs\SyncInstallationRepositories;
@@ -84,15 +85,8 @@ new #[Title('Repositories')] class extends Component
         $repository = $this->findRepository($repositoryId);
         Gate::authorize('update', $repository);
 
-        if ($repository->auto_docs_enabled === $enabled) {
+        if (!app(SetAutoDocs::class)->handle($repository, $enabled)) {
             return;
-        }
-
-        $repository->update(['auto_docs_enabled' => $enabled]);
-        app(AuditLog::class)->record($this->organization, 'repository.auto_docs_changed', $repository, AuditLog::changes($repository, ['auto_docs_enabled']));
-
-        if ($enabled && !$repository->document()->whereNotNull('content')->exists()) {
-            GenerateRepositoryDocumentation::dispatchFor($repository, immediate: true);
         }
 
         $this->dispatch('toast', message: "Automatic documentation updated for {$repository->full_name}.", variant: 'success');
@@ -188,7 +182,7 @@ new #[Title('Repositories')] class extends Component
 <div class="grid gap-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="grid gap-1">
-            <h1 class="text-2xl font-semibold tracking-tight">Repositories</h1>
+            <h1 class="text-2xl tracking-tight">Repositories</h1>
             <p class="text-sm text-muted-foreground">Choose which repositories get reviewed and how strict the risk gate is.</p>
         </div>
 
@@ -241,11 +235,13 @@ new #[Title('Repositories')] class extends Component
         </div>
     @endif
 
-    <x-ui.card>
-        <div class="grid gap-4">
-            <div class="relative max-w-sm">
-                <x-ui.icon name="search" class="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
-                <x-ui.input wire:model.live.debounce.300ms="search" placeholder="Search repositories…" class="pl-9" />
+    <div class="table-wrap">
+            <div class="table-toolbar">
+                <label class="table-search">
+                    <x-ui.icon name="search" />
+                    <input type="search" wire:model.live.debounce.300ms="search" placeholder="Search repositories…" aria-label="Search repositories">
+                </label>
+                <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ $this->repositories->total() }} {{ str('repository')->plural($this->repositories->total()) }}</span>
             </div>
 
             @if ($this->repositories->isEmpty())
@@ -262,28 +258,36 @@ new #[Title('Repositories')] class extends Component
                 </div>
             @else
                 <div class="overflow-x-auto md:overflow-visible">
-                    <table class="w-full text-sm">
+                    <table class="table">
                         <thead>
-                            <tr class="border-b text-left text-muted-foreground">
-                                <th class="h-10 px-2 font-medium">Repository</th>
-                                <th class="h-10 px-2 font-medium">Auto-review</th>
-                                <th class="h-10 px-2 font-medium">Risk threshold</th>
-                                <th class="h-10 px-2 font-medium">Code graph</th>
-                                <th class="h-10 px-2 font-medium">Docs</th>
-                                <th class="h-10 w-10 px-2"><span class="sr-only">Actions</span></th>
+                            <tr>
+                                <th>Repository</th>
+                                <th>Auto-review</th>
+                                <th>Risk threshold</th>
+                                <th>Code graph</th>
+                                <th>Docs</th>
+                                <th class="w-10"><span class="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($this->repositories as $repository)
                                 @php($canUpdate = auth()->user()->can('update', $repository))
-                                <tr wire:key="repository-{{ $repository->id }}" class="border-b last:border-0 transition-colors hover:bg-muted/50">
-                                    <td class="p-2">
-                                        <div class="flex items-center gap-2">
-                                            <x-ui.icon :name="$repository->is_private ? 'lock' : 'globe'" class="text-muted-foreground" />
-                                            <a href="{{ route('repositories.show', $repository) }}" wire:navigate class="font-medium hover:underline">{{ $repository->full_name }}</a>
+                                <tr wire:key="repository-{{ $repository->id }}">
+                                    <td>
+                                        <div class="flex items-center gap-3">
+                                            <span class="grid size-8 shrink-0 place-items-center rounded-lg border bg-muted/50 text-muted-foreground">
+                                                <x-ui.icon name="git-branch" />
+                                            </span>
+                                            <div class="grid min-w-0">
+                                                <a href="{{ route('repositories.show', $repository) }}" wire:navigate class="truncate font-medium hover:underline">{{ str($repository->full_name)->afterLast('/') }}</a>
+                                                <span class="flex items-center gap-1 text-xs text-muted-foreground">
+                                                    {{ str($repository->full_name)->beforeLast('/') }}
+                                                    <x-ui.icon :name="$repository->is_private ? 'lock' : 'globe'" class="size-3" :title="$repository->is_private ? 'Private' : 'Public'" />
+                                                </span>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td class="p-2">
+                                    <td>
                                         <div class="flex items-center gap-2">
                                             <x-ui.switch
                                                 wire:key="switch-{{ $repository->id }}-{{ $repository->autoReviewEnabled() ? 1 : 0 }}"
@@ -301,7 +305,7 @@ new #[Title('Repositories')] class extends Component
                                             @endif
                                         </div>
                                     </td>
-                                    <td class="p-2">
+                                    <td>
                                         <div class="flex items-center gap-2">
                                             <x-ui.input
                                                 type="number"
@@ -318,7 +322,7 @@ new #[Title('Repositories')] class extends Component
                                             @endunless
                                         </div>
                                     </td>
-                                    <td class="p-2">
+                                    <td>
                                         @php($graph = $repository->latestGraph)
                                         @if ($graph)
                                             <div class="flex items-center gap-2">
@@ -331,14 +335,14 @@ new #[Title('Repositories')] class extends Component
                                             <span class="text-xs text-muted-foreground">Not built</span>
                                         @endif
                                     </td>
-                                    <td class="p-2">
+                                    <td>
                                         @if ($repository->auto_docs_enabled)
                                             <x-ui.badge :variant="filled($repository->document?->content) ? 'success' : 'secondary'">{{ filled($repository->document?->content) ? 'Ready' : 'Pending' }}</x-ui.badge>
                                         @else
                                             <span class="text-xs text-muted-foreground">Off</span>
                                         @endif
                                     </td>
-                                    <td class="p-2 text-right">
+                                    <td class="text-right">
                                         <x-ui.dropdown width="w-60" context="tr">
                                             <x-slot:trigger>
                                                 <x-ui.button variant="ghost" size="icon" class="size-8" aria-label="Actions for {{ $repository->full_name }}">
@@ -384,8 +388,9 @@ new #[Title('Repositories')] class extends Component
                     </table>
                 </div>
 
-                {{ $this->repositories->links() }}
+                @if ($this->repositories->hasPages())
+                    <div class="table-foot">{{ $this->repositories->links() }}</div>
+                @endif
             @endif
-        </div>
-    </x-ui.card>
+    </div>
 </div>

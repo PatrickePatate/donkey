@@ -30,8 +30,9 @@ it('shows a repository with tabs for its documentation and dependency graph', fu
 
     $this->actingAs($user)->get(route('repositories.show', $repository))
         ->assertOk()
-        ->assertSee('acme/app')
-        ->assertSee('Read the documentation');
+        ->assertSee('acme')
+        ->assertSee('Documentation')
+        ->assertSee('Generated');
 
     Livewire::actingAs($user)
         ->test('pages::repositories.show', ['repository' => $repository->id])

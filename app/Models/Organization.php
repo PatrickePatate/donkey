@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -101,6 +102,16 @@ class Organization extends Model
     public function effortFor(string $role): ?string
     {
         return ($this->ai_efforts[$role] ?? null) ?: null;
+    }
+
+    /**
+     * The member who linked this GitHub login to their profile, looked up once per request.
+     */
+    public function memberByGithubLogin(?string $login): ?User
+    {
+        $members = once(fn () => $this->members()->whereNotNull('github_login')->get()->keyBy('github_login'));
+
+        return $login === null ? null : $members->get(Str::lower($login));
     }
 
     /**

@@ -67,68 +67,61 @@ new #[Title('Pull requests')] class extends Component
 
 <div class="grid gap-6">
     <div class="grid gap-1">
-        <h1 class="text-2xl font-semibold tracking-tight">Pull requests</h1>
+        <h1 class="text-2xl tracking-tight">Pull requests</h1>
         <p class="text-sm text-muted-foreground">Reviews across every connected repository, updated live.</p>
     </div>
 
-    <x-ui.card>
-        <div class="grid gap-4">
-            <div class="flex flex-wrap items-center gap-3">
-                <div class="relative w-full max-w-sm">
-                    <x-ui.icon name="search" class="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
-                    <x-ui.input wire:model.live.debounce.300ms="search" placeholder="Search by title or author…" class="pl-9" />
-                </div>
-                <div class="inline-flex rounded-md border p-0.5 text-sm">
-                    @foreach (['open' => 'Open', 'merged' => 'Merged', 'closed' => 'Closed', 'all' => 'All'] as $value => $label)
-                        <button
-                            type="button"
-                            wire:click="$set('state', '{{ $value }}')"
-                            @class([
-                                'rounded px-3 py-1',
-                                'bg-secondary font-medium' => $state === $value,
-                                'text-muted-foreground hover:text-foreground' => $state !== $value,
-                            ])
-                        >{{ $label }}</button>
-                    @endforeach
-                </div>
+    <div class="table-wrap">
+        <div class="table-toolbar">
+            <label class="table-search">
+                <x-ui.icon name="search" />
+                <input type="search" wire:model.live.debounce.300ms="search" placeholder="Search by title or author…" aria-label="Search pull requests">
+            </label>
+            <div class="inline-flex rounded-md bg-muted p-0.5 text-sm">
+                @foreach (['open' => 'Open', 'merged' => 'Merged', 'closed' => 'Closed', 'all' => 'All'] as $value => $label)
+                    <button
+                        type="button"
+                        wire:click="$set('state', '{{ $value }}')"
+                        @class([
+                            'h-7 cursor-pointer rounded px-3 font-medium transition-colors',
+                            'bg-background text-foreground shadow-xs' => $state === $value,
+                            'text-muted-foreground hover:text-foreground' => $state !== $value,
+                        ])
+                    >{{ $label }}</button>
+                @endforeach
+            </div>
+            <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ $this->pullRequests->total() }} {{ str('pull request')->plural($this->pullRequests->total()) }}</span>
+        </div>
+
+        @if ($this->pullRequests->isEmpty())
+            <div class="flex flex-col items-center gap-2 py-12 text-center">
+                <x-ui.icon name="git-pull-request" class="size-8 text-muted-foreground" />
+                <p class="font-medium">No pull requests</p>
+                <p class="max-w-sm text-sm text-muted-foreground">Pull requests appear here as soon as GitHub tells us about them.</p>
+            </div>
+        @else
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Pull request</th>
+                            <th>Author</th>
+                            <th>Review</th>
+                            <th class="num">Findings</th>
+                            <th class="num">Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($this->pullRequests as $pullRequest)
+                            @include('partials.pull-request-row', ['pullRequest' => $pullRequest])
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
 
-            @if ($this->pullRequests->isEmpty())
-                <div class="flex flex-col items-center gap-2 py-12 text-center">
-                    <x-ui.icon name="git-pull-request" class="size-8 text-muted-foreground" />
-                    <p class="font-medium">No pull requests</p>
-                    <p class="max-w-sm text-sm text-muted-foreground">Pull requests appear here as soon as GitHub tells us about them.</p>
-                </div>
-            @else
-                <ul class="divide-y">
-                    @foreach ($this->pullRequests as $pullRequest)
-                        @php($run = $pullRequest->latestReviewRun)
-                        <li wire:key="pr-{{ $pullRequest->id }}">
-                            <a href="{{ route('pull-requests.show', $pullRequest) }}" wire:navigate class="-mx-2 flex flex-wrap items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted/50">
-                                <x-ui.icon name="git-pull-request" @class(['size-5', 'text-success' => $pullRequest->state === 'open', 'text-muted-foreground' => $pullRequest->state !== 'open']) />
-                                <div class="grid min-w-0 flex-1 gap-0.5">
-                                    <span class="truncate font-medium">{{ $pullRequest->title }}</span>
-                                    <span class="truncate text-xs text-muted-foreground">
-                                        {{ $pullRequest->repository->full_name }}#{{ $pullRequest->number }} · {{ $pullRequest->author_login }} · {{ $pullRequest->updated_at->diffForHumans() }}
-                                    </span>
-                                </div>
-                                @if ($pullRequest->published_findings_count > 0)
-                                    <x-ui.badge variant="outline">{{ $pullRequest->published_findings_count }} {{ str('finding')->plural($pullRequest->published_findings_count) }}</x-ui.badge>
-                                @endif
-                                @if ($run)
-                                    <x-ui.badge :variant="$run->status->badgeVariant()">
-                                        {{ $run->status === \App\Enums\ReviewRunStatus::Running && $run->stage ? $run->stage->label().'…' : $run->status->label() }}
-                                    </x-ui.badge>
-                                @else
-                                    <x-ui.badge variant="secondary">Not reviewed</x-ui.badge>
-                                @endif
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-
-                {{ $this->pullRequests->links() }}
+            @if ($this->pullRequests->hasPages())
+                <div class="table-foot">{{ $this->pullRequests->links() }}</div>
             @endif
-        </div>
-    </x-ui.card>
+        @endif
+    </div>
 </div>

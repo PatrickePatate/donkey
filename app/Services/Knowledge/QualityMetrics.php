@@ -19,25 +19,29 @@ class QualityMetrics
     private const POSTED = [FindingStatus::Published, FindingStatus::Dismissed, FindingStatus::Outdated];
 
     /**
+     * @param  int  $days  Length of the window.
+     * @param  int  $endingDaysAgo  Shifts the window back, e.g. $days to read the previous period.
      * @return array{
-     *     posted: int, accepted: int, rejected: int, ignored: int, acceptance_rate: ?int,
+     *     posted: int, pull_requests: int, accepted: int, rejected: int, ignored: int, acceptance_rate: ?int,
      *     filtered_by_learnings: int, rejected_by_verifier: int,
      *     by_category: list<array{label: string, posted: int, accepted: int, rejected: int, ignored: int}>,
      *     by_reviewer: list<array{label: string, posted: int, accepted: int, rejected: int, ignored: int}>
      * }
      */
-    public function forOrganization(Organization $organization, int $days = 30): array
+    public function forOrganization(Organization $organization, int $days = 30, int $endingDaysAgo = 0): array
     {
-        $totals = $this->posted($organization, $days)->toBase()->selectRaw($this->aggregates())->first();
+        $totals = $this->posted($organization, $days, $endingDaysAgo)->toBase()
+            ->selectRaw('count(distinct review_findings.pull_request_id) as pull_requests, '.$this->aggregates())
+            ->first();
 
-        $byCategory = $this->posted($organization, $days)
+        $byCategory = $this->posted($organization, $days, $endingDaysAgo)
             ->toBase()
             ->selectRaw('review_findings.category as label, '.$this->aggregates())
             ->groupBy('review_findings.category')
             ->orderByDesc('posted')
             ->get();
 
-        $byReviewer = $this->posted($organization, $days)
+        $byReviewer = $this->posted($organization, $days, $endingDaysAgo)
             ->leftJoin('review_agents', 'review_agents.id', '=', 'review_findings.review_agent_id')
             ->toBase()
             ->selectRaw("coalesce(review_agents.name, 'Donkey') as label, ".$this->aggregates())
@@ -50,10 +54,11 @@ class QualityMetrics
         $recent = ReviewFinding::query()
             ->whereHas('pullRequest.repository', fn (Builder $query) => $query->where('organization_id', $organization->id))
             ->whereHas('reviewRun', fn (Builder $query) => $query->where('is_dry_run', false))
-            ->where('review_findings.created_at', '>=', now()->subDays($days));
+            ->whereBetween('review_findings.created_at', [now()->subDays($days + $endingDaysAgo), now()->subDays($endingDaysAgo)]);
 
         return [
             'posted' => (int) $totals->posted,
+            'pull_requests' => (int) $totals->pull_requests,
             'accepted' => (int) $totals->accepted,
             'rejected' => (int) $totals->rejected,
             'ignored' => (int) $totals->ignored,
@@ -68,7 +73,7 @@ class QualityMetrics
     /**
      * @return Builder<ReviewFinding>
      */
-    private function posted(Organization $organization, int $days): Builder
+    private function posted(Organization $organization, int $days, int $endingDaysAgo): Builder
     {
         return ReviewFinding::query()
             ->join('review_runs', 'review_runs.id', '=', 'review_findings.review_run_id')
@@ -77,7 +82,7 @@ class QualityMetrics
             ->where('repositories.organization_id', $organization->id)
             ->where('review_runs.is_dry_run', false)
             ->whereIn('review_findings.status', self::POSTED)
-            ->where('review_findings.created_at', '>=', now()->subDays($days));
+            ->whereBetween('review_findings.created_at', [now()->subDays($days + $endingDaysAgo), now()->subDays($endingDaysAgo)]);
     }
 
     /**

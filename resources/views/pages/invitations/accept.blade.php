@@ -56,7 +56,7 @@ new #[Layout('layouts::guest')] #[Title('Invitation')] class extends Component
                 <x-ui.button :href="route('register', ['email' => $invitation->email])">Sign up</x-ui.button>
             </div>
         @else
-            <x-ui.button wire:click="accept" class="w-full">Accept invitation</x-ui.button>
+            <x-ui.button wire:click="accept" class="w-full"><x-ui.icon name="check" /> Accept invitation</x-ui.button>
         @endif
     </div>
 </x-ui.card>

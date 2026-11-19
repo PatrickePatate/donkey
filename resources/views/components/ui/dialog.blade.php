@@ -21,7 +21,7 @@
                 @if ($title || $description)
                     <div class="grid gap-2">
                         @if ($title)
-                            <h2 class="text-lg leading-none font-semibold">{{ $title }}</h2>
+                            <h2 class="text-lg leading-none">{{ $title }}</h2>
                         @endif
                         @if ($description)
                             <p class="text-sm text-muted-foreground">{{ $description }}</p>

@@ -110,3 +110,19 @@ it('filters the audit log by action or person', function () {
         ->set('search', 'nothing-matches')
         ->assertSee('No events match');
 });
+
+it('filters the audit log by category and describes events in words', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $organization->auditEvents()->create(['actor' => 'Ada', 'action' => 'member.invited', 'metadata' => ['email' => 'bob@example.com']]);
+    $organization->auditEvents()->create(['actor' => 'Ada', 'action' => 'agent.created', 'metadata' => ['name' => 'Security bot']]);
+    $organization->auditEvents()->create(['actor' => 'Ada', 'action' => 'github.connected']);
+
+    Livewire::actingAs($owner)->test('pages::settings.audit')
+        ->assertSee('invited a member')
+        ->set('category', 'members')
+        ->assertSee('bob@example.com')
+        ->assertDontSee('Security bot')
+        ->set('category', 'organization')
+        ->assertSee('connected GitHub')
+        ->assertDontSee('bob@example.com');
+});

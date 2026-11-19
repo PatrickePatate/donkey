@@ -283,7 +283,7 @@ new class extends Component
 <div class="grid max-w-3xl gap-6">
     <div class="grid gap-1">
         <a href="{{ route('agents.index') }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">← Agents</a>
-        <h1 class="text-2xl font-semibold tracking-tight">{{ $this->agent !== null ? $this->agent->name : 'New agent' }}</h1>
+        <h1 class="text-2xl tracking-tight">{{ $this->agent !== null ? $this->agent->name : 'New agent' }}</h1>
         <p class="text-sm text-muted-foreground">
             An agent reviews the same diff as Donkey, with your instructions, and only reports findings within its focus.
             Its findings go through the same verifier and risk gate.
@@ -396,7 +396,7 @@ new class extends Component
                 @if ($canEdit)
                     <x-slot:footer>
                         <div class="flex w-full items-center justify-between gap-2">
-                            <x-ui.button type="submit">{{ $this->agent !== null ? 'Save changes' : 'Create agent' }}</x-ui.button>
+                            <x-ui.button type="submit"><x-ui.icon name="save" /> {{ $this->agent !== null ? 'Save changes' : 'Create agent' }}</x-ui.button>
                             @if ($this->agent !== null)
                                 <x-ui.button type="button" variant="ghost" class="text-destructive" x-on:click="$dispatch('open-dialog', 'delete-agent')">
                                     <x-ui.icon name="trash" /> Delete
@@ -453,7 +453,7 @@ new class extends Component
         <x-ui.dialog name="delete-agent" title="Delete this agent?" description="It will no longer run on pull requests. Findings it already posted stay on GitHub.">
             <div class="flex justify-end gap-2">
                 <x-ui.button variant="outline" x-on:click="$dispatch('close-dialog')">Cancel</x-ui.button>
-                <x-ui.button variant="destructive" wire:click="delete">Delete agent</x-ui.button>
+                <x-ui.button variant="destructive" wire:click="delete"><x-ui.icon name="trash" /> Delete agent</x-ui.button>
             </div>
         </x-ui.dialog>
     @endif

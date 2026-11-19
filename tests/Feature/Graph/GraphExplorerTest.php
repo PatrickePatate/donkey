@@ -88,7 +88,8 @@ it('navigates from a method to its callers, dependencies and tests', function ()
         ->and(array_column(array_column($hood['dependencies'], 'node'), 'label'))->toBe(['Order'])
         ->and(array_column($hood['tests'], 'label'))->toBe(['charges orders'])
         ->and(array_column($explorer->neighbourhood($graph, 'app/Services/Billing.php::Billing')['members'], 'label'))->toBe(['Billing::charge()'])
-        ->and($explorer->neighbourhood($graph, 'unknown'))->toBeNull();
+        ->and($explorer->neighbourhood($graph, 'unknown'))->toBeNull()
+        ->and($explorer->hub($graph))->toBe('app/Services/Billing.php::Billing.charge');
 });
 
 it('renders the explorer and lets developers search and focus nodes', function () {
@@ -97,12 +98,11 @@ it('renders the explorer and lets developers search and focus nodes', function (
 
     Livewire::actingAs($user)
         ->test('pages::repositories.graph', ['repository' => $repository->id])
-        ->set('search', 'charge')
         ->assertSee('Billing::charge()')
-        ->assertDontSee('OrderController::store()')
+        ->set('search', 'charge')
         ->call('select', 'app/Services/Billing.php::Billing.charge')
-        ->assertSee('Callers (1)')
-        ->assertSee('Dependencies (1)')
+        ->assertSee('1 caller')
+        ->assertSee('1 dependency')
         ->assertSee('OrderController::store()')
         ->assertSee('charges orders');
 });

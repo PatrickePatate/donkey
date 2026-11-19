@@ -130,3 +130,18 @@ it('lets admins remove members', function () {
 
     expect($member->belongsToOrganization($organization))->toBeFalse();
 });
+
+it('filters members by search and role', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $organization->members()->attach(User::factory()->create(['name' => 'Ada Viewer']), ['role' => OrganizationRole::Viewer->value]);
+    $organization->members()->attach(User::factory()->create(['name' => 'Bob Admin']), ['role' => OrganizationRole::Admin->value]);
+
+    Livewire::actingAs($owner)->test('pages::settings.members')
+        ->set('search', 'ada')
+        ->assertSee('Ada Viewer')
+        ->assertDontSee('Bob Admin')
+        ->set('search', '')
+        ->set('role', 'admin')
+        ->assertSee('Bob Admin')
+        ->assertDontSee('Ada Viewer');
+});

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -51,16 +52,16 @@ new #[Title('Profile')] class extends Component
 
     public function save(): void
     {
-        $this->githubLogin = ltrim(trim($this->githubLogin), '@');
+        $this->githubLogin = Str::lower(ltrim(trim($this->githubLogin), '@'));
 
         $validated = $this->validate([
             'name' => ['required', 'string', 'min:2', 'max:80'],
-            'githubLogin' => ['nullable', 'string', 'max:39', 'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i'],
-        ]);
+            'githubLogin' => ['nullable', 'string', 'max:39', 'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i', Rule::unique('users', 'github_login')->ignore(auth()->id())],
+        ], ['githubLogin.unique' => 'Another member has already linked this GitHub username.']);
 
         auth()->user()->update([
             'name' => $validated['name'],
-            'github_login' => filled($validated['githubLogin']) ? Str::lower($validated['githubLogin']) : null,
+            'github_login' => filled($validated['githubLogin']) ? $validated['githubLogin'] : null,
         ]);
 
         $this->dispatch('toast', message: 'Profile saved.', variant: 'success');

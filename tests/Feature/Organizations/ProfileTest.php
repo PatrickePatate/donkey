@@ -26,6 +26,15 @@ it('saves the GitHub username lowercased and refuses invalid ones', function () 
     expect($user->fresh()->github_login)->toBe('octo-cat');
 });
 
+it('refuses a GitHub username another member already linked', function () {
+    [$user] = userInOrganization();
+    [$other] = userInOrganization();
+    $other->update(['github_login' => 'octocat']);
+
+    Livewire::actingAs($user)->test('pages::settings.profile')->set('githubLogin', '@OctoCat')->call('save')->assertHasErrors(['githubLogin' => 'unique']);
+    Livewire::actingAs($other)->test('pages::settings.profile')->set('githubLogin', 'octocat')->call('save')->assertHasNoErrors();
+});
+
 it('matches a GitHub login to a member of the same organization only', function () {
     [$user, $organization] = userInOrganization();
     $user->update(['github_login' => 'octocat']);

@@ -296,7 +296,7 @@ new #[Title('Usage & cost')] class extends Component
         @endif
     </section>
 
-    @if ($report['cost'] > 0)
+    @if ($report['calls'] > 0)
         {{-- Where it goes --}}
         <section class="grid gap-3">
             <h2 class="text-lg">Where it goes</h2>

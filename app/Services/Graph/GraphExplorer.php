@@ -57,7 +57,7 @@ class GraphExplorer
         $edges = [];
 
         foreach (is_array($data) ? ($data['nodes'] ?? []) : [] as $raw) {
-            if (! is_array($raw) || ! isset($raw['qualified_name'])) {
+            if (!is_array($raw) || !isset($raw['qualified_name'])) {
                 continue;
             }
 
@@ -65,7 +65,7 @@ class GraphExplorer
             $nodes[$node['id']] = $node;
             $module = $this->moduleOf($node['file']);
 
-            if ($module !== null && ! isset($nodes["module:{$module}"])) {
+            if ($module !== null && !isset($nodes["module:{$module}"])) {
                 $nodes["module:{$module}"] = ['id' => "module:{$module}", 'name' => $module, 'label' => $module, 'kind' => 'Module', 'category' => 'module', 'file' => $module, 'line' => 0, 'parent' => null];
             }
 
@@ -113,7 +113,7 @@ class GraphExplorer
                 continue;
             }
 
-            if ($query !== '' && ! Str::contains(Str::lower($node['label'].' '.$node['file']), $query)) {
+            if ($query !== '' && !Str::contains(Str::lower($node['label'].' '.$node['file']), $query)) {
                 continue;
             }
 
@@ -132,11 +132,30 @@ class GraphExplorer
      *
      * @return ?Neighbourhood
      */
+    /**
+     * The most connected node, a useful place to start exploring.
+     */
+    public function hub(RepositoryGraph $graph): ?string
+    {
+        $degrees = [];
+
+        foreach ($this->load($graph)['edges'] as $edge) {
+            if (!in_array($edge['kind'], ['CONTAINS', 'TESTED_BY'], true)) {
+                $degrees[$edge['source']] = ($degrees[$edge['source']] ?? 0) + 1;
+                $degrees[$edge['target']] = ($degrees[$edge['target']] ?? 0) + 1;
+            }
+        }
+
+        arsort($degrees);
+
+        return array_key_first($degrees);
+    }
+
     public function neighbourhood(RepositoryGraph $graph, string $id, int $limit = 40): ?array
     {
         ['nodes' => $nodes, 'edges' => $edges] = $this->load($graph);
 
-        if (! isset($nodes[$id])) {
+        if (!isset($nodes[$id])) {
             return null;
         }
 
@@ -207,7 +226,7 @@ class GraphExplorer
         }
 
         if (preg_match('#/(Http/Controllers|controllers|routes|api)/#i', $path) || preg_match('#/pages/.*\.blade\.php$#', $path)) {
-            return $kind === 'Class' || $kind === 'Method' && ! str_starts_with($name, '__') ? 'endpoint' : 'method';
+            return $kind === 'Class' || $kind === 'Method' && !str_starts_with($name, '__') ? 'endpoint' : 'method';
         }
 
         if ($kind !== 'Class') {

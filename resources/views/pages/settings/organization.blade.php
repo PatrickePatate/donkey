@@ -287,104 +287,132 @@ new #[Title('Organization settings')] class extends Component
 };
 ?>
 
-<div class="grid max-w-2xl gap-6">
-    <div class="grid gap-1">
-        <h1 class="text-2xl font-semibold tracking-tight">Organization settings</h1>
-        <p class="text-sm text-muted-foreground">Defaults apply to every repository unless a repository overrides them.</p>
+@php($canUpdate = auth()->user()->can('update', $this->organization))
+
+<div class="grid max-w-5xl gap-8">
+    <div class="flex flex-wrap items-center gap-4">
+        <x-organization-avatar :organization="$this->organization" size="size-12 text-base" />
+        <div class="grid gap-1">
+            <h1 class="text-2xl tracking-tight">Organization settings</h1>
+            <p class="text-sm text-muted-foreground">Defaults apply to every repository unless a repository overrides them.</p>
+        </div>
     </div>
 
-    @php($canUpdate = auth()->user()->can('update', $this->organization))
-
-    <form wire:submit="save">
-        <fieldset @disabled(! $canUpdate) class="grid gap-6">
-            <x-ui.card title="General">
-                <div class="grid gap-6">
-                    <x-ui.field label="Avatar" for="avatar" error="avatar" hint="PNG, JPG or WebP, up to 1 MB. A square image works best.">
-                        <div class="flex items-center gap-4">
-                            <x-organization-avatar :organization="$this->organization" size="size-12 text-base" />
-                            @if ($canUpdate)
-                                <input id="avatar" type="file" wire:model="avatar" accept="image/png,image/jpeg,image/webp" class="text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium">
-                                @if ($this->organization->avatar_path)
-                                    <x-ui.button type="button" variant="ghost" wire:click="removeAvatar">Remove</x-ui.button>
+    <form wire:submit="save" class="grid">
+        <fieldset @disabled(! $canUpdate) class="grid divide-y border-t">
+            {{-- General --}}
+            <section class="grid gap-6 py-8 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-10">
+                <div class="grid content-start gap-1">
+                    <h2 class="text-base">General</h2>
+                    <p class="text-sm text-muted-foreground">How your organization appears in Donkey and on GitHub.</p>
+                </div>
+                <div class="grid divide-y rounded-xl border bg-card shadow-xs">
+                    <div class="p-5">
+                        <x-ui.field label="Avatar" for="avatar" error="avatar" hint="PNG, JPG or WebP, up to 1 MB. A square image works best.">
+                            <div class="flex flex-wrap items-center gap-4">
+                                <x-organization-avatar :organization="$this->organization" size="size-14 text-lg" />
+                                @if ($canUpdate)
+                                    <input id="avatar" type="file" wire:model="avatar" accept="image/png,image/jpeg,image/webp" class="text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium">
+                                    @if ($this->organization->avatar_path)
+                                        <x-ui.button type="button" variant="ghost" wire:click="removeAvatar"><x-ui.icon name="trash" /> Remove</x-ui.button>
+                                    @endif
                                 @endif
-                            @endif
-                        </div>
-                    </x-ui.field>
-
-                    <x-ui.field label="Name" for="name" error="name">
-                        <x-ui.input id="name" wire:model="name" required />
-                    </x-ui.field>
-
-                    <x-ui.field label="Bot handle" for="botHandle" error="botHandle" :hint="'Mention it in a PR comment, e.g. @'.($botHandle ?: 'donkey').' review.'">
-                        <div class="flex items-center">
-                            <span class="flex h-9 items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm text-muted-foreground">@</span>
-                            <x-ui.input id="botHandle" wire:model.blur="botHandle" class="rounded-l-none" required />
-                        </div>
-                    </x-ui.field>
-                </div>
-            </x-ui.card>
-
-            <x-ui.card title="Joining" description="Let colleagues join without an invitation.">
-                <div class="grid gap-6">
-                    <div class="flex items-center justify-between gap-4">
-                        <div class="grid gap-1">
-                            <x-ui.label>Auto-join</x-ui.label>
-                            <p class="text-sm text-muted-foreground">When off, nobody joins automatically; your domains are kept.</p>
-                        </div>
-                        <x-ui.switch wire:model="autoJoinEnabled" :checked="$autoJoinEnabled" :disabled="! $canUpdate" />
+                            </div>
+                        </x-ui.field>
                     </div>
+                    <div class="grid gap-5 p-5 sm:grid-cols-2">
+                        <x-ui.field label="Name" for="name" error="name">
+                            <x-ui.input id="name" wire:model="name" required />
+                        </x-ui.field>
 
-                    <x-ui.field label="Email domains" for="autoJoinDomains" error="autoJoinDomains" :hint="'Anyone who verifies an address at these domains joins automatically. You can only add the domain of your own verified address ('.Str::afterLast(auth()->user()->email, '@').'). One per line.'">
-                        <x-ui.textarea id="autoJoinDomains" wire:model="autoJoinDomains" rows="2" class="font-mono" placeholder="acme.com" />
-                    </x-ui.field>
-
-                    <x-ui.field label="They join as" for="autoJoinRole" error="autoJoinRole">
-                        <x-ui.select id="autoJoinRole" wire:model="autoJoinRole" class="sm:max-w-xs">
-                            <option value="member">{{ OrganizationRole::Member->label() }}: {{ OrganizationRole::Member->description() }}</option>
-                            <option value="viewer">{{ OrganizationRole::Viewer->label() }}: {{ OrganizationRole::Viewer->description() }}</option>
-                        </x-ui.select>
-                    </x-ui.field>
-                </div>
-            </x-ui.card>
-
-            <x-ui.card title="Reviews">
-                <div class="grid gap-6">
-                    <div class="flex items-center justify-between gap-4">
-                        <div class="grid gap-1">
-                            <x-ui.label>Eco-mode</x-ui.label>
-                            <p class="text-sm text-muted-foreground">Use a lower-cost model for small, low-risk review tasks. Large changes and critical findings stay on the main model.</p>
-                        </div>
-                        <x-ui.switch wire:model="ecoMode" :checked="$ecoMode" :disabled="! $canUpdate" />
+                        <x-ui.field label="Bot handle" for="botHandle" error="botHandle" :hint="'Mention it in a PR comment, e.g. @'.($botHandle ?: 'donkey').' review.'">
+                            <div class="flex items-center">
+                                <span class="flex h-9 items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm text-muted-foreground">@</span>
+                                <x-ui.input id="botHandle" wire:model.blur="botHandle" class="rounded-l-none" required />
+                            </div>
+                        </x-ui.field>
                     </div>
+                </div>
+            </section>
 
-                    <x-ui.separator />
-
-                    <div class="flex items-center justify-between gap-4">
-                        <div class="grid gap-1">
-                            <x-ui.label>Auto-review new repositories</x-ui.label>
-                            <p class="text-sm text-muted-foreground">Review pull requests automatically when they're opened or updated.</p>
-                        </div>
+            {{-- Reviews --}}
+            <section class="grid gap-6 py-8 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-10">
+                <div class="grid content-start gap-1">
+                    <h2 class="text-base">Reviews</h2>
+                    <p class="text-sm text-muted-foreground">Defaults for every repository. Each one can override auto-review and the risk threshold from the repositories list.</p>
+                </div>
+                <div class="grid divide-y rounded-xl border bg-card shadow-xs">
+                    <label class="flex cursor-pointer items-start justify-between gap-4 p-5">
+                        <span class="grid gap-1">
+                            <span class="text-sm font-medium">Auto-review new repositories</span>
+                            <span class="text-sm text-muted-foreground">Review pull requests automatically when they're opened or updated.</span>
+                        </span>
                         <x-ui.switch wire:model="autoReviewDefault" :checked="$autoReviewDefault" :disabled="! $canUpdate" />
-                    </div>
+                    </label>
 
-                    <x-ui.separator />
+                    <label class="flex cursor-pointer items-start justify-between gap-4 p-5">
+                        <span class="grid gap-1">
+                            <span class="flex items-center gap-2 text-sm font-medium">Eco-mode <x-ui.badge variant="success">Saves cost</x-ui.badge></span>
+                            <span class="text-sm text-muted-foreground">Use a lower-cost model for small, low-risk review tasks. Large changes and critical findings stay on the main model.</span>
+                        </span>
+                        <x-ui.switch wire:model="ecoMode" :checked="$ecoMode" :disabled="! $canUpdate" />
+                    </label>
 
-                    <x-ui.field label="Risk threshold" error="riskThreshold" hint="Findings scoring below this are kept in the dashboard but not posted on GitHub. 0 posts everything.">
-                        <div class="flex items-center gap-4" x-data>
-                            <input type="range" min="0" max="100" step="5" wire:model.live="riskThreshold" class="w-full accent-primary">
-                            <span class="w-10 text-right text-sm font-medium tabular-nums">{{ $riskThreshold }}</span>
+                    <div class="grid gap-3 p-5">
+                        <div class="flex items-baseline justify-between gap-4">
+                            <span class="grid gap-1">
+                                <span class="text-sm font-medium">Risk threshold</span>
+                                <span class="text-sm text-muted-foreground">Findings scoring below this stay in the dashboard but aren't posted on GitHub. 0 posts everything.</span>
+                            </span>
+                            <span class="font-display text-2xl font-semibold tabular-nums">{{ $riskThreshold }}</span>
                         </div>
-                    </x-ui.field>
+                        <input type="range" min="0" max="100" step="5" wire:model.live="riskThreshold" class="w-full accent-primary" aria-label="Risk threshold">
+                        <div class="flex justify-between text-xs text-muted-foreground">
+                            <span>Post everything</span>
+                            <span>Only high-risk findings</span>
+                        </div>
+                        @error('riskThreshold') <p class="text-sm text-destructive">{{ $message }}</p> @enderror
+                    </div>
                 </div>
+            </section>
 
-            </x-ui.card>
+            {{-- Joining --}}
+            <section class="grid gap-6 py-8 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-10">
+                <div class="grid content-start gap-1">
+                    <h2 class="text-base">Joining</h2>
+                    <p class="text-sm text-muted-foreground">Let colleagues join without an invitation.</p>
+                </div>
+                <div class="grid divide-y rounded-xl border bg-card shadow-xs">
+                    <label class="flex cursor-pointer items-start justify-between gap-4 p-5">
+                        <span class="grid gap-1">
+                            <span class="text-sm font-medium">Auto-join</span>
+                            <span class="text-sm text-muted-foreground">When off, nobody joins automatically; your domains are kept.</span>
+                        </span>
+                        <x-ui.switch wire:model="autoJoinEnabled" :checked="$autoJoinEnabled" :disabled="! $canUpdate" />
+                    </label>
+
+                    <div class="grid gap-5 p-5">
+                        <x-ui.field label="Email domains" for="autoJoinDomains" error="autoJoinDomains" :hint="'Anyone who verifies an address at these domains joins automatically. You can only add the domain of your own verified address ('.Str::afterLast(auth()->user()->email, '@').'). One per line.'">
+                            <x-ui.textarea id="autoJoinDomains" wire:model="autoJoinDomains" rows="2" class="font-mono" placeholder="acme.com" />
+                        </x-ui.field>
+
+                        <x-ui.field label="They join as" for="autoJoinRole" error="autoJoinRole">
+                            <x-ui.select id="autoJoinRole" wire:model="autoJoinRole" class="sm:max-w-sm">
+                                <option value="member">{{ OrganizationRole::Member->label() }}: {{ OrganizationRole::Member->description() }}</option>
+                                <option value="viewer">{{ OrganizationRole::Viewer->label() }}: {{ OrganizationRole::Viewer->description() }}</option>
+                            </x-ui.select>
+                        </x-ui.field>
+                    </div>
+                </div>
+            </section>
 
             @if ($canUpdate)
-                <div class="sticky bottom-4 z-10 flex items-center justify-between gap-4 rounded-lg border bg-card/95 p-3 pl-4 shadow-lg backdrop-blur animate-enter">
-                    <p class="text-sm text-muted-foreground">Saves General, Joining and Reviews.</p>
-                    <x-ui.button type="submit">
-                        <x-ui.icon name="refresh" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="save" />
-                        Save organization settings
+                <div class="flex items-center justify-end gap-4 py-6">
+                    <p wire:dirty class="flex items-center gap-2 text-sm font-medium"><span class="size-2 rounded-full bg-warning"></span> Unsaved changes</p>
+                    <x-ui.button type="submit" wire:loading.attr="disabled" wire:target="save">
+                        <x-ui.icon name="loader-circle" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="save" />
+                        <x-ui.icon name="save" wire:loading.class="hidden" wire:target="save" />
+                        Save changes
                     </x-ui.button>
                 </div>
             @endif
@@ -392,20 +420,31 @@ new #[Title('Organization settings')] class extends Component
     </form>
 
     @can('manageAi', $this->organization)
-        <form wire:submit="saveAi">
-            <x-ui.card title="AI provider" description="Reviews, answers, learnings and documentation use this provider and key. Only owners can see and change it.">
-                <div class="grid gap-6">
-                    <x-ui.field label="Provider" for="aiProvider" error="aiProvider">
-                        <x-ui.select id="aiProvider" wire:model="aiProvider" class="sm:max-w-xs">
-                            @foreach (self::AI_PROVIDERS as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </x-ui.select>
-                    </x-ui.field>
+        <form wire:submit="saveAi" class="border-t">
+            <section class="grid gap-6 py-8 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-10">
+                <div class="grid content-start gap-2">
+                    <h2 class="text-base">AI provider</h2>
+                    <p class="text-sm text-muted-foreground">Reviews, answers, learnings and documentation use this provider and key. Only owners can see and change it.</p>
+                    @if ($this->organization->hasAiKey())
+                        <x-ui.badge variant="success"><x-ui.icon name="check" /> Key saved</x-ui.badge>
+                    @else
+                        <x-ui.badge variant="destructive"><x-ui.icon name="triangle-alert" /> No key: reviews paused</x-ui.badge>
+                    @endif
+                </div>
+                <div class="grid divide-y rounded-xl border bg-card shadow-xs">
+                    <div class="grid gap-5 p-5 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+                        <x-ui.field label="Provider" for="aiProvider" error="aiProvider">
+                            <x-ui.select id="aiProvider" wire:model="aiProvider">
+                                @foreach (self::AI_PROVIDERS as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </x-ui.select>
+                        </x-ui.field>
 
-                    <x-ui.field label="API key" for="aiApiKey" error="aiApiKey" :hint="$this->organization->hasAiKey() ? 'A key is saved. Leave blank to keep it, or paste a new one to replace it.' : 'No key saved: reviews are paused until you add one.'">
-                        <x-ui.input id="aiApiKey" type="password" wire:model="aiApiKey" autocomplete="off" placeholder="{{ $this->organization->hasAiKey() ? '••••••••••••' : 'sk-…' }}" />
-                    </x-ui.field>
+                        <x-ui.field label="API key" for="aiApiKey" error="aiApiKey" :hint="$this->organization->hasAiKey() ? 'Leave blank to keep the saved key, or paste a new one to replace it.' : 'Paste a key to start reviewing.'">
+                            <x-ui.input id="aiApiKey" type="password" wire:model="aiApiKey" autocomplete="off" placeholder="{{ $this->organization->hasAiKey() ? '••••••••••••' : 'sk-…' }}" />
+                        </x-ui.field>
+                    </div>
 
                     @php($modelHints = [
                         'review' => 'Default: '.config('reviews.model').'. With OpenRouter use vendor/model ids.',
@@ -413,17 +452,20 @@ new #[Title('Organization settings')] class extends Component
                         'verifier' => 'Re-checks findings. Empty uses the review model.',
                         'conversation' => 'Answers to @mentions on GitHub. Empty uses the review model.',
                     ])
-                    <div class="grid gap-4">
-                        <p class="text-sm text-muted-foreground">Reasoning effort: higher is more thorough, slower and costlier. Sent to Anthropic, OpenAI and OpenRouter only.</p>
+                    <div class="grid gap-4 p-5">
+                        <div class="grid gap-1">
+                            <span class="text-sm font-medium">Models and reasoning effort</span>
+                            <span class="text-sm text-muted-foreground">Higher effort is more thorough, slower and costlier. Sent to Anthropic, OpenAI and OpenRouter only.</span>
+                        </div>
                         @foreach (Organization::AI_EFFORT_ROLES as $role => $roleLabel)
                             <div wire:key="ai-role-{{ $role }}" class="grid gap-3 sm:grid-cols-[1fr_10rem]">
                                 @if (isset($modelHints[$role]))
                                     <x-ui.field :label="$roleLabel.' model'" :for="$role.'Model'" :error="$role.'Model'" :hint="$modelHints[$role]">
-                                        <x-ui.input :id="$role.'Model'" wire:model="{{ $role }}Model" :placeholder="$role === 'review' ? config('reviews.model') : ''" />
+                                        <x-ui.input :id="$role.'Model'" wire:model="{{ $role }}Model" :placeholder="$role === 'review' ? config('reviews.model') : ''" class="font-mono" />
                                     </x-ui.field>
                                 @else
                                     <x-ui.field :label="$roleLabel.' model'" hint="Uses the review model.">
-                                        <x-ui.input :value="$reviewModel ?: config('reviews.model')" disabled />
+                                        <x-ui.input :value="$reviewModel ?: config('reviews.model')" disabled class="font-mono" />
                                     </x-ui.field>
                                 @endif
                                 <x-ui.field label="Effort" :for="'aiEfforts-'.$role" :error="'aiEfforts.'.$role">
@@ -437,21 +479,20 @@ new #[Title('Organization settings')] class extends Component
                             </div>
                         @endforeach
                     </div>
-                </div>
 
-                <x-slot:footer>
-                    <div class="flex flex-wrap gap-2">
-                        <x-ui.button type="submit">Save AI settings</x-ui.button>
-                        <x-ui.button type="button" variant="outline" wire:click="testAi">
-                            <x-ui.icon name="refresh" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="testAi" />
+                    <div class="flex flex-wrap items-center gap-2 bg-muted/30 p-4">
+                        <x-ui.button type="submit"><x-ui.icon name="save" /> Save AI settings</x-ui.button>
+                        <x-ui.button type="button" variant="outline" wire:click="testAi" wire:loading.attr="disabled" wire:target="testAi">
+                            <x-ui.icon name="loader-circle" class="hidden animate-spin" wire:loading.class.remove="hidden" wire:target="testAi" />
+                            <x-ui.icon name="flask" wire:loading.class="hidden" wire:target="testAi" />
                             Test key
                         </x-ui.button>
                         @if ($this->organization->hasAiKey())
-                            <x-ui.button type="button" variant="outline" wire:click="removeAiKey" wire:confirm="Remove the API key? Reviews are paused until you save a new one.">Remove key</x-ui.button>
+                            <x-ui.button type="button" variant="ghost" class="ml-auto text-destructive hover:text-destructive" wire:click="removeAiKey" wire:confirm="Remove the API key? Reviews are paused until you save a new one."><x-ui.icon name="trash" /> Remove key</x-ui.button>
                         @endif
                     </div>
-                </x-slot:footer>
-            </x-ui.card>
+                </div>
+            </section>
         </form>
     @endcan
 </div>

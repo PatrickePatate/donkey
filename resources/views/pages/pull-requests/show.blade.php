@@ -66,7 +66,7 @@ new class extends Component
         }
 
         $this->pullRequest->refresh();
-        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts, $this->openSeverities, $this->activeTab);
     }
 
     /**
@@ -81,7 +81,7 @@ new class extends Component
         }
 
         $this->pullRequest->refresh();
-        unset($this->conversation, $this->findings, $this->findingCounts);
+        unset($this->conversation, $this->findings, $this->findingCounts, $this->openSeverities, $this->activeTab);
     }
 
     /**
@@ -173,7 +173,7 @@ new class extends Component
     public function selectRun(int $runId): void
     {
         $this->selectedRunId = $runId;
-        unset($this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
+        unset($this->selectedRun, $this->logs, $this->findings, $this->findingCounts, $this->openSeverities, $this->activeTab);
     }
 
     public function startReview(StartReview $startReview): void
@@ -189,7 +189,7 @@ new class extends Component
         $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, full: true, source: (string) Str::uuid());
 
         $this->selectedRunId = $run?->id;
-        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts, $this->openSeverities, $this->activeTab);
 
         $this->dispatch('toast', message: 'Review queued.', variant: 'success');
     }
@@ -209,7 +209,7 @@ new class extends Component
         $run = $startReview->handle($this->pullRequest, ReviewTrigger::Manual, auth()->user()->name, source: (string) Str::uuid(), agent: $agent);
 
         $this->selectedRunId = $run?->id;
-        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts);
+        unset($this->runs, $this->selectedRun, $this->logs, $this->findings, $this->findingCounts, $this->openSeverities, $this->activeTab);
 
         $this->dispatch('toast', message: "{$agent->name} agent queued.", variant: 'success');
     }
@@ -224,6 +224,39 @@ new class extends Component
     }
 
     public bool $showFiles = false;
+
+    /**
+     * Tab picked by the user; when null the review shows if there is one, the description and files otherwise.
+     */
+    #[Url]
+    public ?string $tab = null;
+
+    #[Computed]
+    public function activeTab(): string
+    {
+        return in_array($this->tab, ['review', 'changes'], true) ? $this->tab : ($this->runs->isNotEmpty() ? 'review' : 'changes');
+    }
+
+    /**
+     * Published findings of the selected run, by severity, worst first.
+     *
+     * @return array<string, int>
+     */
+    #[Computed]
+    public function openSeverities(): array
+    {
+        if ($this->selectedRun === null) {
+            return [];
+        }
+
+        $counts = $this->selectedRun->findings()->where('status', FindingStatus::Published)
+            ->toBase()->selectRaw('severity, count(*) as total')->groupBy('severity')->pluck('total', 'severity');
+
+        return collect(\App\Enums\FindingSeverity::cases())
+            ->mapWithKeys(fn ($severity): array => [$severity->value => (int) ($counts[$severity->value] ?? 0)])
+            ->filter()
+            ->all();
+    }
 
     /**
      * Files changed on GitHub, fetched only once the files panel is opened; null when GitHub failed.
@@ -253,11 +286,11 @@ new class extends Component
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="grid min-w-0 gap-1">
             <a href="{{ route('pull-requests.index') }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">← Pull requests</a>
-            <h1 class="text-2xl font-semibold tracking-tight">{{ $pullRequest->title }} <span class="font-normal text-muted-foreground">#{{ $pullRequest->number }}</span></h1>
+            <h1 class="text-2xl tracking-tight">{{ $pullRequest->title }} <span class="font-normal text-muted-foreground">#{{ $pullRequest->number }}</span></h1>
             <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 <span>{{ $pullRequest->repository->full_name }}</span>
                 <span>·</span>
-                <span>{{ $pullRequest->author_login }}</span>
+                <x-github-user :login="$pullRequest->author_login" />
                 <span>·</span>
                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ $pullRequest->head_ref }} → {{ $pullRequest->base_ref }}</code>
                 <x-ui.badge :variant="$pullRequest->isOpen() ? 'success' : 'secondary'">{{ ucfirst($pullRequest->state) }}</x-ui.badge>
@@ -276,7 +309,7 @@ new class extends Component
             </x-ui.button>
             @can('review', $pullRequest)
                 <x-ui.button variant="outline" wire:click="toggleAutoReview" :title="$pullRequest->auto_review_paused ? 'Review new commits automatically again' : 'Stop reviewing new commits automatically'">
-                    {{ $pullRequest->auto_review_paused ? 'Resume auto-review' : 'Pause auto-review' }}
+                    <x-ui.icon :name="$pullRequest->auto_review_paused ? 'play' : 'pause'" /> {{ $pullRequest->auto_review_paused ? 'Resume auto-review' : 'Pause auto-review' }}
                 </x-ui.button>
                 @if ($this->agents->isNotEmpty())
                     <x-ui.dropdown align="end" width="w-64">
@@ -298,41 +331,51 @@ new class extends Component
                     </x-ui.dropdown>
                 @endif
                 <x-ui.button wire:click="startReview" :disabled="! $pullRequest->isOpen()">
-                    <x-ui.icon name="play" /> Review now
+                    <x-ui.icon name="sparkles" /> Review now
                 </x-ui.button>
             @endcan
         </div>
     </div>
 
     @php($run = $this->selectedRun)
+    @php($tab = $this->activeTab)
+    <div role="tablist" class="mb-2 flex gap-4 border-b text-sm">
+        @foreach (['review' => 'Findings', 'changes' => 'Description & files'] as $key => $label)
+            <button type="button" role="tab" aria-selected="{{ $tab === $key ? 'true' : 'false' }}" wire:click="$set('tab', '{{ $key }}')"
+                @class(['-mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 px-1 pb-2.5 font-medium transition-colors', 'border-foreground text-foreground' => $tab === $key, 'border-transparent text-muted-foreground hover:text-foreground' => $tab !== $key])>
+                {{ $label }}
+                @if ($key === 'review' && ($this->findingCounts[FindingStatus::Published->value] ?? 0) > 0)
+                    <x-ui.badge variant="secondary">{{ $this->findingCounts[FindingStatus::Published->value] }}</x-ui.badge>
+                @endif
+            </button>
+        @endforeach
+    </div>
+
     <div @class(['grid grid-cols-[minmax(0,1fr)] gap-6', 'lg:grid-cols-[minmax(0,1fr)_16rem]' => $run !== null])>
-        <div class="grid min-w-0 content-start gap-6">
+        <div class="grid min-w-0 content-start gap-8">
+        @if ($tab === 'changes')
         @if (filled($pullRequest->body))
-            <details class="group/description min-w-0" open>
-                <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                    <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open/description:rotate-0" />
-                    Description
-                </summary>
-                <div class="prose prose-sm mt-3 max-w-none text-muted-foreground dark:prose-invert">{!! $this->markdown($pullRequest->body) !!}</div>
-            </details>
+            <section class="grid gap-2">
+                <h2 class="text-sm text-muted-foreground">Description</h2>
+                <div class="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">{!! $this->markdown($pullRequest->body) !!}</div>
+            </section>
         @endif
 
-        <details class="group min-w-0" @if ($showFiles) open @endif x-on:toggle="if ($el.open) $wire.set('showFiles', true)">
-            <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <x-ui.icon name="chevron-down" class="size-4 -rotate-90 transition-transform group-open:rotate-0" />
+        <section class="grid min-w-0 gap-3">
+            <h2 class="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <x-ui.icon name="file-code" class="size-4" />
                 @if ($showFiles && $this->files !== null)
                     {{ count($this->files) }} {{ Str::plural('file', count($this->files)) }} changed
                 @else
                     Files changed
                 @endif
-            </summary>
+            </h2>
 
             @if ($showFiles)
                 @if ($this->files === null)
-                    <p class="mt-3 text-sm text-muted-foreground">Could not load the files from GitHub.</p>
+                    <p class="text-sm text-muted-foreground">Could not load the files from GitHub.</p>
                 @else
-                    <ul class="mt-3 divide-y overflow-hidden rounded-md border">
+                    <ul class="divide-y overflow-hidden rounded-md border">
                         @foreach ($this->files as $file)
                             <li wire:key="file-{{ $file['filename'] }}">
                                 <details class="group/file" x-data x-on:toggle.once="highlightDiff($el.querySelector('pre'), @js($file['filename']))">
@@ -361,16 +404,17 @@ new class extends Component
                     </ul>
                 @endif
             @else
-                <ul class="mt-3 grid gap-2" aria-label="Loading files">
+                <ul wire:init="$set('showFiles', true)" class="grid gap-2" aria-label="Loading files">
                     @foreach ([70, 45, 60] as $width)
                         <li class="h-7 animate-pulse rounded-md bg-muted" style="width: {{ $width }}%"></li>
                     @endforeach
                 </ul>
             @endif
-        </details>
+        </section>
 
+        @else
             @if ($run === null)
-            <x-ui.card>
+            <div class="rounded-lg border border-dashed">
                 <div class="flex flex-col items-center gap-2 py-10 text-center">
                     <x-ui.icon name="shield" class="size-8 text-muted-foreground" />
                     <p class="font-medium">Not reviewed yet</p>
@@ -379,80 +423,27 @@ new class extends Component
                         <code>{{ '@'.$pullRequest->repository->organization->bot_handle }} review</code>.
                     </p>
                 </div>
-            </x-ui.card>
+            </div>
             @else
-                <x-ui.card>
-                    <x-slot:title>
-                        {{ $run->agent !== null ? $run->agent->name.' agent' : 'Review' }} #{{ $run->id }}
-                    </x-slot:title>
-                    <div class="grid gap-6">
-                        <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <x-ui.badge :variant="$run->status->badgeVariant()">{{ $run->status->label() }}</x-ui.badge>
-                            <span>{{ $run->trigger->label() }}{{ $run->triggered_by ? ' by '.$run->triggered_by : '' }}</span>
-                            <span>·</span>
-                            <code class="text-xs">{{ Str::substr($run->head_sha, 0, 7) }}</code>
-                            @if ($run->is_full && $run->agent === null)
-                                <x-ui.badge variant="outline">Full review</x-ui.badge>
-                            @endif
-                            @if ($run->is_dry_run)
-                                <x-ui.badge variant="warning">Test run · not posted</x-ui.badge>
-                            @endif
+                @if ($run->status === ReviewRunStatus::Completed)
+                    @php($open = $this->findingCounts[FindingStatus::Published->value] ?? 0)
+                    <div role="status" class="flex items-start gap-3 rounded-lg border bg-card px-4 py-3 text-sm">
+                        <span @class(['grid size-7 shrink-0 place-items-center rounded-full', 'bg-destructive/10 text-destructive' => $open > 0, 'bg-success/15 text-success' => $open === 0])>
+                            <x-ui.icon :name="$open > 0 ? 'message-square' : 'check'" class="size-4" />
+                        </span>
+                        <div class="grid gap-0.5">
+                            <p class="font-medium">{{ $open > 0 ? 'Changes requested: '.$open.' open '.Str::plural('finding', $open) : 'No open findings' }}</p>
+                            <p class="text-muted-foreground">
+                                @foreach ($this->openSeverities as $severity => $count){{ $count }} {{ $severity }}{{ $loop->last ? ' · ' : ', ' }}@endforeach
+                                Reviewed commit <a href="{{ $pullRequest->html_url }}/commits/{{ $run->head_sha }}" target="_blank" rel="noopener" class="font-mono text-xs underline-offset-2 hover:text-foreground hover:underline">{{ Str::substr($run->head_sha, 0, 7) }}</a> {{ ($run->completed_at ?? $run->updated_at)->diffForHumans() }}.
+                            </p>
                         </div>
-
-                        @if (in_array($run->status, [ReviewRunStatus::Queued, ReviewRunStatus::Running, ReviewRunStatus::Completed, ReviewRunStatus::Failed], true))
-                            <x-ui.stepper
-                                :steps="ReviewStage::steps()"
-                                :current="$run->stage?->value"
-                                :state="match ($run->status) {
-                                    ReviewRunStatus::Queued => 'pending',
-                                    ReviewRunStatus::Completed => 'complete',
-                                    ReviewRunStatus::Failed => 'error',
-                                    default => 'active',
-                                }"
-                            />
-                        @endif
-
-                        @if ($this->logs->isNotEmpty())
-                            <details @if (! $run->status->isFinished()) open @endif class="rounded-md border text-sm">
-                                <summary class="cursor-pointer px-3 py-2 font-medium">Live log</summary>
-                                <ol
-                                    x-data
-                                    x-init="$el.scrollTop = $el.scrollHeight; new MutationObserver(() => $el.scrollTop = $el.scrollHeight).observe($el, { childList: true })"
-                                    class="max-h-64 overflow-y-auto border-t bg-muted/40 p-3 font-mono text-xs"
-                                >
-                                    @foreach ($this->logs as $log)
-                                        <li wire:key="log-{{ $log->id }}" @class(['text-destructive' => $log->level === 'error'])>
-                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span>
-                                            @if ($call = $log->toolCall())
-                                                <span class="ml-4 inline-flex items-center gap-1 rounded border bg-background px-1.5 align-middle font-medium">
-                                                    <x-ui.icon :name="match ($call['tool']) { 'read_file' => 'file-code', 'search_code' => 'search', 'symbol_graph' => 'git-branch', default => 'bot' }" class="size-3 text-muted-foreground" />
-                                                    {{ $call['tool'] }}
-                                                </span>
-                                                <span class="break-all">{{ $call['arguments'] }}</span>
-                                                @if ($call['outcome'] !== '')
-                                                    <span class="text-muted-foreground">→ {{ $call['outcome'] }}</span>
-                                                @endif
-                                            @else
-                                                {{ $log->message }}
-                                            @endif
-                                        </li>
-                                    @endforeach
-                                </ol>
-                            </details>
-                        @endif
-
-                        @if ($run->status === ReviewRunStatus::Failed && $run->error)
-                            <x-ui.alert variant="destructive" title="Review failed">{{ Str::limit($run->error, 300) }}</x-ui.alert>
-                        @elseif ($run->summary)
-                            <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">
-                                {!! $this->markdown($run->summary) !!}
-                            </div>
-                        @endif
                     </div>
-                </x-ui.card>
+                @endif
 
                 @if ($run->status === ReviewRunStatus::Completed || $this->findingCounts !== [])
-                    <x-ui.card title="Findings">
+                    <section class="grid gap-3">
+                        <h2 class="text-sm text-muted-foreground">Findings</h2>
                         <div class="grid gap-4">
                             <div class="inline-flex w-fit flex-wrap rounded-md border p-0.5 text-sm">
                                 @foreach ([...array_map(fn ($status) => $status->value, FindingStatus::cases()), 'all'] as $status)
@@ -528,11 +519,82 @@ new class extends Component
                                 <p class="py-6 text-center text-sm text-muted-foreground">No {{ $findingStatus === 'all' ? '' : $findingStatus.' ' }}findings in this review.</p>
                             @endforelse
                         </div>
-                    </x-ui.card>
+                    </section>
                 @endif
 
+                <section class="grid gap-3">
+                    <h2 class="text-sm text-muted-foreground">
+                        {{ $run->agent !== null ? $run->agent->name.' agent' : 'Review' }} #{{ $run->id }}
+                    </h2>
+                    <div class="grid gap-6">
+                        <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            <x-ui.badge :variant="$run->status->badgeVariant()">{{ $run->status->label() }}</x-ui.badge>
+                            <span>{{ $run->trigger->label() }}{{ $run->triggered_by ? ' by '.$run->triggered_by : '' }}</span>
+                            <span>·</span>
+                            <a href="{{ $pullRequest->html_url }}/commits/{{ $run->head_sha }}" target="_blank" rel="noopener" class="font-mono text-xs underline-offset-2 hover:text-foreground hover:underline">{{ Str::substr($run->head_sha, 0, 7) }}</a>
+                            @if ($run->is_full && $run->agent === null)
+                                <x-ui.badge variant="outline">Full review</x-ui.badge>
+                            @endif
+                            @if ($run->is_dry_run)
+                                <x-ui.badge variant="warning">Test run · not posted</x-ui.badge>
+                            @endif
+                        </div>
+
+                        @if (in_array($run->status, [ReviewRunStatus::Queued, ReviewRunStatus::Running, ReviewRunStatus::Completed, ReviewRunStatus::Failed], true))
+                            <x-ui.stepper
+                                :steps="ReviewStage::steps()"
+                                :current="$run->stage?->value"
+                                :state="match ($run->status) {
+                                    ReviewRunStatus::Queued => 'pending',
+                                    ReviewRunStatus::Completed => 'complete',
+                                    ReviewRunStatus::Failed => 'error',
+                                    default => 'active',
+                                }"
+                            />
+                        @endif
+
+                        @if ($this->logs->isNotEmpty())
+                            <details @if (! $run->status->isFinished()) open @endif class="rounded-md border text-sm">
+                                <summary class="cursor-pointer px-3 py-2 font-medium">Live log</summary>
+                                <ol
+                                    x-data
+                                    x-init="$el.scrollTop = $el.scrollHeight; new MutationObserver(() => $el.scrollTop = $el.scrollHeight).observe($el, { childList: true })"
+                                    class="max-h-64 overflow-y-auto border-t bg-muted/40 p-3 font-mono text-xs"
+                                >
+                                    @foreach ($this->logs as $log)
+                                        <li wire:key="log-{{ $log->id }}" @class(['text-destructive' => $log->level === 'error'])>
+                                            <span class="text-muted-foreground">{{ $log->created_at->format('H:i:s') }}</span>
+                                            @if ($call = $log->toolCall())
+                                                <span class="ml-4 inline-flex items-center gap-1 rounded border bg-background px-1.5 align-middle font-medium">
+                                                    <x-ui.icon :name="match ($call['tool']) { 'read_file' => 'file-code', 'search_code' => 'search', 'symbol_graph' => 'git-branch', default => 'bot' }" class="size-3 text-muted-foreground" />
+                                                    {{ $call['tool'] }}
+                                                </span>
+                                                <span class="break-all">{{ $call['arguments'] }}</span>
+                                                @if ($call['outcome'] !== '')
+                                                    <span class="text-muted-foreground">→ {{ $call['outcome'] }}</span>
+                                                @endif
+                                            @else
+                                                {{ $log->message }}
+                                            @endif
+                                        </li>
+                                    @endforeach
+                                </ol>
+                            </details>
+                        @endif
+
+                        @if ($run->status === ReviewRunStatus::Failed && $run->error)
+                            <x-ui.alert variant="destructive" title="Review failed">{{ Str::limit($run->error, 300) }}</x-ui.alert>
+                        @elseif ($run->summary)
+                            <div class="prose prose-sm max-w-none dark:prose-invert prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none">
+                                {!! $this->markdown($run->summary) !!}
+                            </div>
+                        @endif
+                    </div>
+                </section>
+
                 @if ($this->conversation->isNotEmpty())
-                    <x-ui.card title="Conversation" :description="'Questions asked to @'.$pullRequest->repository->organization->bot_handle.' on GitHub.'">
+                    <section class="grid gap-3">
+                        <h2 class="text-sm text-muted-foreground">Conversation <span class="text-xs">· questions asked to {{ '@'.$pullRequest->repository->organization->bot_handle }} on GitHub</span></h2>
                         <ol class="grid gap-4">
                             @foreach ($this->conversation as $message)
                                 @php($fromBot = $message->role === \App\Enums\ConversationRole::Bot)
@@ -543,7 +605,7 @@ new class extends Component
                                         @else
                                             <x-ui.icon name="message-square" class="size-3.5" />
                                         @endif
-                                        <span class="font-medium text-foreground">{{ '@'.$message->author_login }}</span>
+                                        <x-github-user :login="$message->author_login" at class="font-medium text-foreground" />
                                         @if ($message->finding !== null && ! $fromBot)
                                             <span class="truncate">on “{{ Str::limit($message->finding->title, 60) }}”</span>
                                         @elseif ($message->isInThread() && ! $fromBot)
@@ -560,9 +622,10 @@ new class extends Component
                                 </li>
                             @endforeach
                         </ol>
-                    </x-ui.card>
+                    </section>
                 @endif
             @endif
+        @endif
         </div>
 
         @if ($run !== null)
@@ -573,11 +636,19 @@ new class extends Component
                         @if ($run->graph_status === \App\Enums\RunGraphStatus::Ready)
                             <div class="grid gap-4 text-sm">
                                 @if ($run->graph_risk_level)
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-muted-foreground">Structural risk</span>
-                                        <x-ui.badge :variant="match ($run->graph_risk_level) { 'HIGH', 'CRITICAL' => 'destructive', 'MEDIUM' => 'warning', default => 'secondary' }">
-                                            {{ ucfirst(strtolower($run->graph_risk_level)) }}{{ $run->graph_risk_score !== null ? ' · '.$run->graph_risk_score : '' }}
-                                        </x-ui.badge>
+                                    @php($riskColor = match ($run->graph_risk_level) { 'HIGH', 'CRITICAL' => 'var(--destructive)', 'MEDIUM' => 'var(--warning)', default => 'var(--success)' })
+                                    <div class="flex items-center gap-3">
+                                        <svg viewBox="0 0 36 36" class="size-14 shrink-0 -rotate-90" role="img" aria-label="Structural risk score {{ $run->graph_risk_score ?? 'unknown' }} out of 100">
+                                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--muted)" stroke-width="3.2" />
+                                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="{{ $riskColor }}" stroke-width="3.2" stroke-linecap="round" pathLength="100" stroke-dasharray="{{ min(100, max(0, $run->graph_risk_score ?? 0)) }} 100" />
+                                            <text x="18" y="18" dy="0.35em" text-anchor="middle" transform="rotate(90 18 18)" class="fill-foreground font-display text-[11px] font-semibold">{{ $run->graph_risk_score ?? '—' }}</text>
+                                        </svg>
+                                        <div class="grid gap-0.5">
+                                            <span class="font-medium">{{ ucfirst(strtolower($run->graph_risk_level)) }} structural risk</span>
+                                            @if ($run->risk_threshold !== null && $run->risk_score !== null)
+                                                <span class="text-xs text-muted-foreground">Review risk {{ $run->risk_score }}, {{ $run->risk_score >= $run->risk_threshold ? 'above' : 'below' }} the threshold of {{ $run->risk_threshold }}</span>
+                                            @endif
+                                        </div>
                                     </div>
                                 @endif
                                 <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -601,9 +672,26 @@ new class extends Component
                                                         <span class="size-1.5 shrink-0 rounded-full bg-destructive" title="No tests"></span>
                                                     @endunless
                                                 </div>
-                                                @foreach ($function['contract'] as $change)
-                                                    <span class="truncate text-xs text-muted-foreground">⚠ {{ $change['field'] }}: {{ Str::limit($change['old'], 30) }} → {{ Str::limit($change['new'], 30) }}</span>
-                                                @endforeach
+                                                @if ($function['contract'] !== [])
+                                                    <div x-data="{ open: false }" class="relative" x-on:mouseenter="open = true" x-on:mouseleave="open = false" x-on:keydown.escape="open = false">
+                                                        <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open" class="w-full cursor-help truncate text-left text-xs text-muted-foreground hover:text-foreground">
+                                                            ⚠ {{ $function['contract'][0]['field'] }}: {{ Str::limit($function['contract'][0]['new'], 30) }}{{ count($function['contract']) > 1 ? ' +'.(count($function['contract']) - 1) : '' }}
+                                                        </button>
+                                                        <div x-show="open" x-transition.opacity x-cloak role="tooltip" class="absolute top-full right-0 z-20 mt-1 grid w-80 gap-3 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md">
+                                                            <div class="grid gap-0.5">
+                                                                <code class="font-medium break-all">{{ $function['symbol'] }}</code>
+                                                                <span class="text-muted-foreground">Contract changed · {{ $function['callers'] }} {{ Str::plural('caller', $function['callers']) }} · {{ $function['tested'] ? 'covered by tests' : 'no tests' }}</span>
+                                                            </div>
+                                                            @foreach ($function['contract'] as $change)
+                                                                <div class="grid gap-1">
+                                                                    <span class="font-medium">{{ ucfirst($change['field']) }}</span>
+                                                                    <code class="rounded bg-red-500/10 px-1.5 py-0.5 break-all">− {{ $change['old'] }}</code>
+                                                                    <code class="rounded bg-green-500/10 px-1.5 py-0.5 break-all">+ {{ $change['new'] }}</code>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    </div>
+                                                @endif
                                             </li>
                                         @endforeach
                                     </ul>
@@ -619,10 +707,13 @@ new class extends Component
 
                 <x-ui.card title="Details">
                     <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                        <dt class="text-muted-foreground">Risk score</dt>
-                        <dd class="text-right font-medium tabular-nums">{{ $run->risk_score ?? '—' }}</dd>
-                        <dt class="text-muted-foreground">Threshold</dt>
-                        <dd class="text-right tabular-nums">{{ $run->risk_threshold ?? '—' }}</dd>
+                        {{-- Already stated under the risk donut when the impact card shows it. --}}
+                        @unless ($run->graph_status === \App\Enums\RunGraphStatus::Ready && $run->graph_risk_level && $run->risk_threshold !== null && $run->risk_score !== null)
+                            <dt class="text-muted-foreground">Risk score</dt>
+                            <dd class="text-right font-medium tabular-nums">{{ $run->risk_score ?? '—' }}</dd>
+                            <dt class="text-muted-foreground">Threshold</dt>
+                            <dd class="text-right tabular-nums">{{ $run->risk_threshold ?? '—' }}</dd>
+                        @endunless
                         <dt class="text-muted-foreground">Rejected by verifier</dt>
                         <dd class="text-right tabular-nums">{{ $run->findings_rejected }}</dd>
                         <dt class="text-muted-foreground">Files</dt>

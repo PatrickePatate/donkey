@@ -12,11 +12,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Passport\Contracts\OAuthenticatable;
 use Laravel\Passport\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'current_organization_id'])]
+#[Fillable(['name', 'email', 'password', 'current_organization_id', 'avatar_path', 'github_login'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
 {
@@ -92,6 +93,11 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable
         $this->setRelation('currentOrganization', $organization);
 
         return true;
+    }
+
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null;
     }
 
     public function initials(): string

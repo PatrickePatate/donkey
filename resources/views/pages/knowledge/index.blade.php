@@ -289,7 +289,7 @@ new #[Title('Knowledge')] class extends Component
 <div class="grid gap-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="grid gap-1">
-            <h1 class="text-2xl font-semibold tracking-tight">Knowledge</h1>
+            <h1 class="text-2xl tracking-tight">Knowledge</h1>
             <p class="max-w-2xl text-sm text-muted-foreground">
                 What Donkey knows about your code. Memories come from your team
                 (<code class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ '@'.$this->organization->bot_handle }} remember …</code>);
@@ -343,7 +343,7 @@ new #[Title('Knowledge')] class extends Component
                     </x-ui.field>
                     <div class="flex items-center justify-between gap-4">
                         <x-ui.label class="font-normal"><x-ui.checkbox wire:model="memoryPinned" /> Pin: include in every review of this repository</x-ui.label>
-                        <x-ui.button type="submit">Save memory</x-ui.button>
+                        <x-ui.button type="submit"><x-ui.icon name="save" /> Save memory</x-ui.button>
                     </div>
                 </form>
             </x-ui.card>
@@ -499,7 +499,7 @@ new #[Title('Knowledge')] class extends Component
             </div>
             <div class="flex justify-end gap-2">
                 <x-ui.button type="button" variant="outline" x-on:click="$dispatch('close-dialog')">Cancel</x-ui.button>
-                <x-ui.button type="submit">Save</x-ui.button>
+                <x-ui.button type="submit"><x-ui.icon name="save" /> Save</x-ui.button>
             </div>
         </form>
     </x-ui.dialog>

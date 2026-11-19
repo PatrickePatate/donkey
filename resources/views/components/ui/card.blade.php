@@ -8,7 +8,7 @@
         <div class="flex items-start justify-between gap-4 px-6">
             <div class="grid gap-1.5">
                 @if ($title)
-                    <h3 class="text-sm leading-none font-semibold">{{ $title }}</h3>
+                    <h3 class="text-sm leading-none">{{ $title }}</h3>
                 @endif
                 @if ($description)
                     <p class="text-sm text-muted-foreground">{{ $description }}</p>

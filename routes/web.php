@@ -45,6 +45,7 @@ Route::middleware('auth')->group(function () {
         Route::livewire('/settings/members', 'pages::settings.members')->name('settings.members');
         Route::livewire('/settings/usage', 'pages::settings.usage')->name('settings.usage');
         Route::livewire('/settings/audit', 'pages::settings.audit')->name('settings.audit');
+        Route::livewire('/settings/profile', 'pages::settings.profile')->name('settings.profile');
 
         Route::get('/github/install', InstallController::class)->name('github.install');
         Route::get('/github/setup', SetupController::class)->name('github.setup');

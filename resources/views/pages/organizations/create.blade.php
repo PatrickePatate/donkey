@@ -30,7 +30,7 @@ new #[Layout('layouts::guest')] #[Title('Create organization')] class extends Co
             <x-ui.input id="name" wire:model="name" placeholder="Acme Inc." autofocus required />
         </x-ui.field>
 
-        <x-ui.button type="submit" class="w-full">Create organization</x-ui.button>
+        <x-ui.button type="submit" class="w-full"><x-ui.icon name="plus" /> Create organization</x-ui.button>
 
         @if (auth()->user()->organizations()->exists())
             <x-ui.button variant="ghost" :href="route('dashboard')" wire:navigate>Cancel</x-ui.button>

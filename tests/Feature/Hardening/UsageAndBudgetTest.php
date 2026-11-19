@@ -125,7 +125,7 @@ it('shows usage and cost to owners only', function () {
         ->assertOk()
         ->assertSee('$1.25')
         ->assertSee('Answers on GitHub')
-        ->assertSee('$9.00 the month before');
+        ->assertSee('vs $9.00 last month');
 
     $this->actingAs($admin)->get(route('settings.usage'))->assertForbidden();
     $this->actingAs($admin)->get(route('dashboard'))->assertDontSee('Usage &amp; cost', false);
@@ -164,4 +164,33 @@ it('lets owners price a model and prices the calls recorded without a price', fu
         ->and($page->get('prices.0.cache_read'))->toBe('0.5')
         ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0, $organization))->toBe(2_000_000)
         ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0))->toBe(0);
+});
+
+it('lets owners remove a custom model price', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $organization->modelPrices()->create(['model' => 'acme/custom', 'input_per_million' => 1, 'output_per_million' => 2]);
+
+    Livewire::actingAs($owner)->test('pages::settings.usage')
+        ->assertSet('prices.0.model', 'acme/custom')
+        ->call('removeModel', 0)
+        ->assertSet('prices', []);
+
+    expect($organization->modelPrices()->count())->toBe(0);
+});
+
+it('keeps a removed model price and restores it when the model is priced again', function () {
+    [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
+    $price = $organization->modelPrices()->create(['model' => 'acme/custom', 'input_per_million' => 1, 'output_per_million' => 2]);
+
+    $component = Livewire::actingAs($owner)->test('pages::settings.usage')->call('removeModel', 0);
+
+    expect($price->fresh()->trashed())->toBeTrue();
+
+    $component->set('newModel', 'acme/custom')->call('addModel')
+        ->set('prices.0.input', '3')->set('prices.0.output', '4')
+        ->call('savePrices');
+
+    expect($organization->modelPrices()->sole())
+        ->id->toBe($price->id)
+        ->input_per_million->toEqual('3.0000');
 });

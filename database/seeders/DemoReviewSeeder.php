@@ -14,9 +14,12 @@ use App\Enums\RunGraphStatus;
 use App\Models\GithubInstallation;
 use App\Models\Organization;
 use App\Models\PullRequest;
+use App\Models\Repository;
 use App\Models\ReviewRun;
+use App\Models\WebhookEvent;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 /**
@@ -41,6 +44,7 @@ class DemoReviewSeeder extends Seeder
         }
 
         GithubInstallation::query()->where('installation_id', self::DEMO_INSTALLATION_ID)->delete();
+        WebhookEvent::query()->where('installation_id', self::DEMO_INSTALLATION_ID)->delete();
 
         $installation = $organization->githubInstallations()->create([
             'installation_id' => self::DEMO_INSTALLATION_ID,
@@ -59,13 +63,22 @@ class DemoReviewSeeder extends Seeder
             'is_private' => true,
         ]);
 
+        // A real kodus-graph parse of a small billing codebase, so the graph explorer has something to show.
+        $fixture = json_decode((string) file_get_contents(__DIR__.'/fixtures/billing-api-graph.json'), true);
+        $sha = sha1('base-12');
+        $path = rtrim((string) config('graph.graph_path'), '/')."/{$repository->id}/{$sha}.json";
+        File::ensureDirectoryExists(dirname($path));
+        File::copy(__DIR__.'/fixtures/billing-api-graph.json', $path);
+
         $repository->graphs()->create([
-            'commit_sha' => sha1('base-12'),
+            'commit_sha' => $sha,
             'status' => GraphStatus::Ready,
-            'nodes_count' => 4_812,
-            'edges_count' => 15_377,
-            'files_count' => 386,
-            'duration_ms' => 41_200,
+            'path' => $path,
+            'nodes_count' => count($fixture['nodes']),
+            'edges_count' => count($fixture['edges']),
+            'files_count' => count(array_unique(array_column($fixture['nodes'], 'file_path'))),
+            'size_bytes' => (int) filesize($path),
+            'duration_ms' => 1_850,
             'built_at' => now()->subMinutes(12),
         ]);
 
@@ -83,6 +96,16 @@ class DemoReviewSeeder extends Seeder
 
         $merged = $this->pullRequest($repository->id, 9, 'Fix rounding in proration', 'ada', 'fix/proration-rounding', state: 'merged');
         $this->reviewRun($merged, ReviewRunStatus::Completed, null, startedAgo: 86_400, summary: 'Small, well-tested fix to proration rounding. Nothing to flag.');
+
+        $this->activity();
+        $this->advisories($repository);
+        $this->advisories($installation->repositories()->create([
+            'organization_id' => $organization->id,
+            'github_id' => 2,
+            'full_name' => 'acme-demo/storefront',
+            'default_branch' => 'main',
+            'is_private' => false,
+        ]), storefront: true);
 
         $this->command?->info("Seeded demo pull requests for {$organization->name}.");
     }
@@ -248,5 +271,74 @@ class DemoReviewSeeder extends Seeder
             'body' => 'Fixed by a later commit.',
             'status' => FindingStatus::Outdated,
         ]);
+    }
+
+    /**
+     * A feed of webhook deliveries covering every tone of the live activity card.
+     */
+    private function activity(): void
+    {
+        $repository = ['full_name' => 'acme-demo/billing-api'];
+        $events = [
+            ['pull_request', 'opened', ['pull_request' => ['number' => 15]], 'processed', 2],
+            ['pull_request_review_thread', 'resolved', ['pull_request' => ['number' => 12]], 'processed', 18],
+            ['issue_comment', 'created', ['issue' => ['number' => 12]], 'processed', 35],
+            ['pull_request', 'synchronize', ['pull_request' => ['number' => 13]], 'processed', 50],
+            ['pull_request', 'synchronize', ['pull_request' => ['number' => 14]], 'failed', 70],
+            ['pull_request_review_thread', 'unresolved', ['pull_request' => ['number' => 12]], 'processed', 120],
+            ['pull_request', 'closed', ['pull_request' => ['number' => 9, 'merged' => true]], 'processed', 180],
+            ['installation_repositories', 'added', [], 'processed', 1_440],
+            ['installation', 'created', [], 'processed', 1_500],
+        ];
+
+        foreach ($events as [$event, $action, $payload, $status, $minutesAgo]) {
+            WebhookEvent::factory()->create([
+                'event' => $event,
+                'action' => $action,
+                'installation_id' => self::DEMO_INSTALLATION_ID,
+                'payload' => ['repository' => $repository, ...$payload],
+                'status' => $status,
+                'created_at' => now()->subMinutes($minutesAgo),
+            ]);
+        }
+    }
+
+    /**
+     * Demo vulnerabilities in the Composer dependencies (illustrative ids, not real advisories).
+     */
+    private function advisories(Repository $repository, bool $storefront = false): void
+    {
+        $advisories = $storefront
+            ? [
+                ['acme/image-resizer', '2.3.0', false, 'Path traversal when resizing uploaded images', FindingSeverity::High, '<2.3.4', 9],
+                ['acme/markdown-lite', '0.9.1', false, 'Cross-site scripting through link titles', FindingSeverity::Medium, '<0.9.5', 21],
+            ]
+            : [
+                ['acme/http-client', '7.4.0', false, 'Authorization header forwarded on cross-domain redirects', FindingSeverity::Critical, '>=7.0,<7.4.5', 3],
+                ['acme/jwt-tools', '5.1.2', false, 'Signature check skipped for tokens using the "none" algorithm', FindingSeverity::High, '<5.2.0', 12],
+                ['acme/xml-parser', '1.8.0', false, 'External entity expansion allows reading local files', FindingSeverity::Medium, '<1.8.3', 30],
+                ['acme/debug-bar', '3.0.1', true, 'Debug toolbar exposes environment variables when enabled', FindingSeverity::Low, '<3.0.4', 60],
+            ];
+
+        $repository->update([
+            'dependencies_scanned_at' => now()->subHours(2),
+            'dependencies_commit_sha' => sha1("deps-{$repository->full_name}"),
+            'composer_packages_count' => $storefront ? 64 : 112,
+        ]);
+
+        foreach ($advisories as $index => [$package, $version, $isDev, $title, $severity, $affected, $daysAgo]) {
+            $repository->securityAdvisories()->create([
+                'package' => $package,
+                'installed_version' => $version,
+                'is_dev' => $isDev,
+                'advisory_id' => sprintf('DEMO-%d-%02d', $repository->id, $index + 1),
+                'title' => $title,
+                'cve' => null,
+                'link' => "https://packagist.org/packages/{$package}/advisories",
+                'severity' => $severity,
+                'affected_versions' => $affected,
+                'reported_at' => now()->subDays($daysAgo),
+            ]);
+        }
     }
 }

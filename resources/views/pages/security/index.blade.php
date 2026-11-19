@@ -191,7 +191,7 @@ new #[Title('Security')] class extends Component
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="grid gap-1">
             @unless ($embedded)
-                <h1 class="text-2xl font-semibold tracking-tight">Security</h1>
+                <h1 class="text-2xl tracking-tight">Security</h1>
             @endunless
             <p class="text-sm text-muted-foreground">
                 @if ($repositoryId && $this->repositories->first())
@@ -220,7 +220,7 @@ new #[Title('Security')] class extends Component
             <x-ui.field label="Monitored branch" for="securityBranch" error="securityBranch" :hint="'Empty uses the default branch ('.$this->repositories->first()->default_branch.').'" class="w-full max-w-xs">
                 <x-ui.input id="securityBranch" wire:model="securityBranch" class="font-mono" :placeholder="$this->repositories->first()->default_branch" />
             </x-ui.field>
-            <x-ui.button type="submit" variant="outline" class="sm:mt-6">Save</x-ui.button>
+            <x-ui.button type="submit" variant="outline" class="sm:mt-6"><x-ui.icon name="save" /> Save</x-ui.button>
         </form>
     @endif
 
@@ -289,13 +289,13 @@ new #[Title('Security')] class extends Component
             </x-ui.card>
         @endif
 
-        <x-ui.card>
-            <div class="grid gap-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="relative w-full max-w-sm">
-                        <x-ui.icon name="search" class="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
-                        <x-ui.input wire:model.live.debounce.300ms="search" placeholder="Package, title or CVE…" class="pl-9" />
-                    </div>
+        <div class="table-wrap">
+            <div>
+                <div class="table-toolbar justify-between">
+                    <label class="table-search">
+                        <x-ui.icon name="search" />
+                        <input type="search" wire:model.live.debounce.300ms="search" placeholder="Package, title or CVE…" aria-label="Search advisories">
+                    </label>
                     @if ($repositoryId && $this->repositories->first()?->composer_packages_count !== null)
                         <span class="text-sm text-muted-foreground">{{ $this->repositories->first()->composer_packages_count }} packages checked at <code>{{ substr((string) $this->repositories->first()->dependencies_commit_sha, 0, 7) }}</code></span>
                     @endif
@@ -308,29 +308,29 @@ new #[Title('Security')] class extends Component
                     </div>
                 @else
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                        <table class="table">
                             <thead>
-                                <tr class="border-b text-left text-muted-foreground">
-                                    <th class="h-10 px-2 font-medium">Severity</th>
-                                    <th class="h-10 px-2 font-medium">Package</th>
-                                    <th class="h-10 px-2 font-medium">Advisory</th>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Package</th>
+                                    <th>Advisory</th>
                                     @unless ($repositoryId)
-                                        <th class="h-10 px-2 font-medium">Repository</th>
+                                        <th>Repository</th>
                                     @endunless
-                                    <th class="h-10 px-2 font-medium">Reported</th>
+                                    <th>Reported</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach ($this->advisories as $advisory)
                                     <tr wire:key="advisory-{{ $advisory->id }}" class="border-b align-top transition-colors last:border-0 hover:bg-muted/50">
-                                        <td class="p-2">
+                                        <td>
                                             @if ($advisory->severity)
                                                 <x-ui.badge :variant="$advisory->severity->badgeVariant()">{{ $advisory->severity->label() }}</x-ui.badge>
                                             @else
                                                 <x-ui.badge variant="outline">Unrated</x-ui.badge>
                                             @endif
                                         </td>
-                                        <td class="p-2">
+                                        <td>
                                             <div class="grid gap-0.5">
                                                 <span class="font-mono text-xs font-medium">{{ $advisory->package }}</span>
                                                 <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -341,7 +341,7 @@ new #[Title('Security')] class extends Component
                                                 </span>
                                             </div>
                                         </td>
-                                        <td class="p-2">
+                                        <td>
                                             <div class="grid gap-0.5">
                                                 @if ($advisory->link)
                                                     <a href="{{ $advisory->link }}" target="_blank" rel="noopener" class="font-medium hover:underline">{{ $advisory->title }}</a>
@@ -354,20 +354,22 @@ new #[Title('Security')] class extends Component
                                             </div>
                                         </td>
                                         @unless ($repositoryId)
-                                            <td class="p-2">
+                                            <td>
                                                 <a href="{{ route('repositories.show', ['repository' => $advisory->repository, 'tab' => 'security']) }}" wire:navigate class="hover:underline">{{ $advisory->repository->full_name }}</a>
                                             </td>
                                         @endunless
-                                        <td class="p-2 whitespace-nowrap text-muted-foreground">{{ $advisory->reported_at?->toFormattedDateString() }}</td>
+                                        <td class="whitespace-nowrap text-muted-foreground">{{ $advisory->reported_at?->toFormattedDateString() }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
                         </table>
                     </div>
 
-                    {{ $this->advisories->links() }}
+                    @if ($this->advisories->hasPages())
+                        <div class="table-foot">{{ $this->advisories->links() }}</div>
+                    @endif
                 @endif
             </div>
-        </x-ui.card>
+        </div>
     @endif
 </div>

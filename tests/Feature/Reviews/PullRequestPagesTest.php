@@ -147,8 +147,8 @@ it('shows the structural impact and verifier notes of a review', function () {
 
     Livewire::actingAs($user)
         ->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
-        ->assertSee('Structural risk')
-        ->assertSee('High · 81')
+        ->assertSee('High structural risk')
+        ->assertSee('81')
         ->assertSee('16 callers')
         ->assertSee('($user, $amount)')
         ->set('findingStatus', 'rejected')
@@ -202,4 +202,22 @@ it('shows the pull request description and its diff on demand', function () {
         ->set('showFiles', true)
         ->assertSee('app/Invoice.php')
         ->assertSee('+<?php');
+});
+
+it('opens on the findings when the pull request was reviewed, on the description otherwise', function () {
+    [$user, $organization] = userInOrganization(OrganizationRole::Viewer);
+    $pullRequest = pullRequestIn($organization);
+
+    Livewire::actingAs($user)->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
+        ->assertSet('activeTab', 'changes');
+
+    $run = ReviewRun::factory()->completed()->for($pullRequest)->create();
+    ReviewFinding::factory()->for($run)->create(['severity' => 'high']);
+
+    Livewire::actingAs($user)->test('pages::pull-requests.show', ['pullRequest' => $pullRequest])
+        ->assertSet('activeTab', 'review')
+        ->assertSee('Changes requested: 1 open finding')
+        ->assertSee('1 high')
+        ->set('tab', 'changes')
+        ->assertDontSee('Changes requested');
 });

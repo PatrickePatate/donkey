@@ -62,7 +62,7 @@ new #[Layout('layouts::guest')] #[Title('Verify your email')] class extends Comp
         @enderror
 
         <div class="flex flex-wrap items-center gap-2">
-            <x-ui.button wire:click="resend" variant="outline">Send the link again</x-ui.button>
+            <x-ui.button wire:click="resend" variant="outline"><x-ui.icon name="mail" /> Send the link again</x-ui.button>
             <x-ui.button :href="route('organizations.create')" variant="ghost" wire:navigate>Skip for now</x-ui.button>
         </div>
     </div>

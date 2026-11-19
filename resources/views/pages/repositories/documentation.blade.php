@@ -42,7 +42,7 @@ new #[Title('Repository documentation')] class extends Component
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div class="grid gap-1">
                 <a href="{{ route('repositories.show', $this->repository) }}" wire:navigate class="text-sm text-muted-foreground hover:text-foreground">{{ $this->repository->full_name }}</a>
-                <h1 class="text-2xl font-semibold tracking-tight">Documentation</h1>
+                <h1 class="text-2xl tracking-tight">Documentation</h1>
             </div>
         </div>
     @endunless

@@ -25,17 +25,20 @@ use Illuminate\Support\Carbon;
  * @property string $model
  * @property int $input_tokens
  * @property int $output_tokens
+ * @property int $cache_read_tokens
+ * @property int $cache_write_tokens
  * @property int $cost_micros
  * @property Carbon $created_at
  * @property-read Organization $organization
  * @property-read ?Repository $repository
  * @property-read ?PullRequest $pullRequest
  */
-#[Fillable(['organization_id', 'repository_id', 'pull_request_id', 'review_run_id', 'feature', 'provider', 'model', 'input_tokens', 'output_tokens', 'cost_micros', 'created_at'])]
+#[Fillable(['organization_id', 'repository_id', 'pull_request_id', 'review_run_id', 'feature', 'provider', 'model', 'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'cost_micros', 'created_at'])]
 class AiUsage extends Model
 {
     /** @use HasFactory<AiUsageFactory> */
-    use HasFactory, MassPrunable;
+    use HasFactory;
+    use MassPrunable;
 
     public const UPDATED_AT = null;
 
@@ -45,6 +48,8 @@ class AiUsage extends Model
             'feature' => AiFeature::class,
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',
+            'cache_read_tokens' => 'integer',
+            'cache_write_tokens' => 'integer',
             'cost_micros' => 'integer',
             'created_at' => 'datetime',
         ];

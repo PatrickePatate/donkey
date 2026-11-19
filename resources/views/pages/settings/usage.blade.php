@@ -63,7 +63,7 @@ new #[Title('Usage & cost')] class extends Component
 
     public function updatedMonth(): void
     {
-        if (! array_key_exists($this->month, $this->months)) {
+        if (!array_key_exists($this->month, $this->months)) {
             $this->month = now()->format('Y-m');
         }
 
@@ -94,8 +94,10 @@ new #[Title('Usage & cost')] class extends Component
         $unpriced = $this->organization->aiUsages()->distinct()->pluck('model')
             ->reject(fn (string $model): bool => $custom->has($model) || config("ai_pricing.models.{$model}") !== null);
 
-        $this->prices = $custom->map(fn ($price): array => ['model' => $price->model, 'input' => rtrim(rtrim($price->input_per_million, '0'), '.'), 'output' => rtrim(rtrim($price->output_per_million, '0'), '.')])
-            ->concat($unpriced->map(fn (string $model): array => ['model' => $model, 'input' => '', 'output' => '']))
+        $trim = fn (?string $value): string => $value === null ? '' : rtrim(rtrim($value, '0'), '.');
+
+        $this->prices = $custom->map(fn ($price): array => ['model' => $price->model, 'input' => $trim($price->input_per_million), 'output' => $trim($price->output_per_million), 'cache_read' => $trim($price->cache_read_per_million), 'cache_write' => $trim($price->cache_write_per_million)])
+            ->concat($unpriced->map(fn (string $model): array => ['model' => $model, 'input' => '', 'output' => '', 'cache_read' => '', 'cache_write' => '']))
             ->values()
             ->all();
     }
@@ -104,7 +106,7 @@ new #[Title('Usage & cost')] class extends Component
     {
         $this->validate(['newModel' => ['required', 'string', 'max:255']]);
 
-        $this->prices[] = ['model' => trim($this->newModel), 'input' => '', 'output' => ''];
+        $this->prices[] = ['model' => trim($this->newModel), 'input' => '', 'output' => '', 'cache_read' => '', 'cache_write' => ''];
         $this->newModel = '';
     }
 
@@ -116,6 +118,8 @@ new #[Title('Usage & cost')] class extends Component
             'prices.*.model' => ['required', 'string', 'max:255'],
             'prices.*.input' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'prices.*.output' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'prices.*.cache_read' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'prices.*.cache_write' => ['nullable', 'numeric', 'min:0', 'max:100000'],
         ]);
 
         foreach ($this->prices as $row) {
@@ -125,7 +129,12 @@ new #[Title('Usage & cost')] class extends Component
                 continue;
             }
 
-            $price = $this->organization->modelPrices()->updateOrCreate(['model' => $row['model']], ['input_per_million' => $row['input'], 'output_per_million' => $row['output']]);
+            $price = $this->organization->modelPrices()->updateOrCreate(['model' => $row['model']], [
+                'input_per_million' => $row['input'],
+                'output_per_million' => $row['output'],
+                'cache_read_per_million' => ($row['cache_read'] ?? '') === '' ? null : $row['cache_read'],
+                'cache_write_per_million' => ($row['cache_write'] ?? '') === '' ? null : $row['cache_write'],
+            ]);
             app(UsageMeter::class)->priceUnpricedUsage($this->organization, $price);
         }
 
@@ -218,10 +227,10 @@ new #[Title('Usage & cost')] class extends Component
         </div>
     </x-ui.card>
 
-    <x-ui.card title="Model prices" description="US dollars per million tokens. Leave a model blank to use the default price, or none. Saving also prices past calls of that model that were recorded at $0.">
+    <x-ui.card title="Model prices" description="US dollars per million tokens. Leave a model blank to use the default price, or none. Blank cache prices default to 0.1× (read) and 1.25× (write) the input price. Saving also prices past calls of that model that were recorded at $0.">
         <form wire:submit="savePrices" class="grid gap-4">
             @forelse ($prices as $index => $row)
-                <div class="grid items-end gap-2 sm:grid-cols-[1fr_8rem_8rem]" wire:key="price-{{ $index }}">
+                <div class="grid items-end gap-2 sm:grid-cols-[1fr_7rem_7rem_7rem_7rem]" wire:key="price-{{ $index }}">
                     <x-ui.field :label="$loop->first ? 'Model' : null" error="prices.{{ $index }}.model">
                         <code class="block truncate rounded-md border bg-muted/40 px-3 py-2 text-sm">{{ $row['model'] }}</code>
                     </x-ui.field>
@@ -230,6 +239,12 @@ new #[Title('Usage & cost')] class extends Component
                     </x-ui.field>
                     <x-ui.field :label="$loop->first ? 'Output' : null" error="prices.{{ $index }}.output">
                         <x-ui.input wire:model="prices.{{ $index }}.output" inputmode="decimal" placeholder="default" aria-label="Output price for {{ $row['model'] }}" />
+                    </x-ui.field>
+                    <x-ui.field :label="$loop->first ? 'Cache read' : null" error="prices.{{ $index }}.cache_read">
+                        <x-ui.input wire:model="prices.{{ $index }}.cache_read" inputmode="decimal" placeholder="default" aria-label="Cache read price for {{ $row['model'] }}" />
+                    </x-ui.field>
+                    <x-ui.field :label="$loop->first ? 'Cache write' : null" error="prices.{{ $index }}.cache_write">
+                        <x-ui.input wire:model="prices.{{ $index }}.cache_write" inputmode="decimal" placeholder="default" aria-label="Cache write price for {{ $row['model'] }}" />
                     </x-ui.field>
                 </div>
             @empty

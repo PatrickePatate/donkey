@@ -16,8 +16,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $model
  * @property numeric-string $input_per_million
  * @property numeric-string $output_per_million
+ * @property numeric-string|null $cache_read_per_million
+ * @property numeric-string|null $cache_write_per_million
  */
-#[Fillable(['organization_id', 'model', 'input_per_million', 'output_per_million'])]
+#[Fillable(['organization_id', 'model', 'input_per_million', 'output_per_million', 'cache_read_per_million', 'cache_write_per_million'])]
 class ModelPrice extends Model
 {
     /** @use HasFactory<ModelPriceFactory> */

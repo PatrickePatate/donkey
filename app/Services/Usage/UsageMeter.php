@@ -14,6 +14,7 @@ use App\Models\ReviewRun;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\Data\Usage;
 
 /**
@@ -31,6 +32,9 @@ class UsageMeter
         ?PullRequest $pullRequest = null,
         ?ReviewRun $reviewRun = null,
     ): AiUsage {
+        $cacheReadTokens = $usage instanceof TextUsage ? (int) $usage->cacheReadInputTokens : 0;
+        $cacheWriteTokens = $usage instanceof TextUsage ? (int) $usage->cacheWriteInputTokens : 0;
+
         $record = $organization->aiUsages()->create([
             'repository_id' => $repository->id ?? $pullRequest?->repository_id,
             'pull_request_id' => $pullRequest?->id,
@@ -40,7 +44,9 @@ class UsageMeter
             'model' => $model,
             'input_tokens' => $usage->inputTokens,
             'output_tokens' => $usage->outputTokens,
-            'cost_micros' => $this->costMicros($model, $usage->inputTokens, $usage->outputTokens, $organization),
+            'cache_read_tokens' => $cacheReadTokens,
+            'cache_write_tokens' => $cacheWriteTokens,
+            'cost_micros' => $this->costMicros($model, $usage->inputTokens, $usage->outputTokens, $organization, $cacheReadTokens, $cacheWriteTokens),
         ]);
 
         if ($record->cost_micros > 0) {
@@ -52,30 +58,66 @@ class UsageMeter
 
     /**
      * Estimated cost in millionths of a dollar; prices are per million tokens, so tokens × price works out exactly.
+     * The cached tokens are a subset of the input tokens, billed at the cache prices instead of the input price.
      */
-    public function costMicros(string $model, int $inputTokens, int $outputTokens, ?Organization $organization = null): int
+    public function costMicros(string $model, int $inputTokens, int $outputTokens, ?Organization $organization = null, int $cacheReadTokens = 0, int $cacheWriteTokens = 0): int
     {
-        $custom = $organization?->modelPrices()->firstWhere('model', $model);
-        $price = $custom !== null
-            ? ['input' => $custom->input_per_million, 'output' => $custom->output_per_million]
-            : config("ai_pricing.models.{$model}");
+        $price = $this->price($model, $organization);
 
-        if (! is_array($price)) {
+        if ($price === null) {
             return 0;
         }
 
-        return (int) round($inputTokens * (float) $price['input'] + $outputTokens * (float) $price['output']);
+        $uncachedInputTokens = max(0, $inputTokens - $cacheReadTokens - $cacheWriteTokens);
+
+        return (int) round(
+            $uncachedInputTokens * $price['input']
+            + $cacheReadTokens * $price['cache_read']
+            + $cacheWriteTokens * $price['cache_write']
+            + $outputTokens * $price['output']
+        );
     }
 
     /**
      * Price the calls of a model that were recorded at zero cost because it had no price yet.
      */
-    public function priceUnpricedUsage(Organization $organization, ModelPrice $price): void
+    public function priceUnpricedUsage(Organization $organization, ModelPrice $modelPrice): void
     {
+        $price = $this->price($modelPrice->model, $organization);
+
         $organization->aiUsages()
-            ->where('model', $price->model)
+            ->where('model', $modelPrice->model)
             ->where('cost_micros', 0)
-            ->update(['cost_micros' => DB::raw("CAST(ROUND(input_tokens * {$price->input_per_million} + output_tokens * {$price->output_per_million}) AS BIGINT)")]);
+            ->update(['cost_micros' => DB::raw(sprintf(
+                'CAST(ROUND((input_tokens - cache_read_tokens - cache_write_tokens) * %F + cache_read_tokens * %F + cache_write_tokens * %F + output_tokens * %F) AS BIGINT)',
+                $price['input'], $price['cache_read'], $price['cache_write'], $price['output'],
+            ))]);
+    }
+
+    /**
+     * The organization's price for a model, else the configured one; cache prices default to a share of the input price.
+     *
+     * @return array{input: float, output: float, cache_read: float, cache_write: float}|null
+     */
+    private function price(string $model, ?Organization $organization): ?array
+    {
+        $custom = $organization?->modelPrices()->firstWhere('model', $model);
+        $price = $custom !== null
+            ? ['input' => $custom->input_per_million, 'output' => $custom->output_per_million, 'cache_read' => $custom->cache_read_per_million, 'cache_write' => $custom->cache_write_per_million]
+            : config("ai_pricing.models.{$model}");
+
+        if (!is_array($price)) {
+            return null;
+        }
+
+        $input = (float) $price['input'];
+
+        return [
+            'input' => $input,
+            'output' => (float) $price['output'],
+            'cache_read' => (float) ($price['cache_read'] ?? $input * config('ai_pricing.cache_read_ratio')),
+            'cache_write' => (float) ($price['cache_write'] ?? $input * config('ai_pricing.cache_write_ratio')),
+        ];
     }
 
     /**
@@ -106,7 +148,7 @@ class UsageMeter
         foreach (config('ai_pricing.alert_thresholds') as $threshold) {
             $key = "budget-alert:{$organization->id}:".now()->format('Y-m').":{$threshold}";
 
-            if ($share < $threshold || ! Cache::add($key, true, now()->endOfMonth()->addDay())) {
+            if ($share < $threshold || !Cache::add($key, true, now()->endOfMonth()->addDay())) {
                 continue;
             }
 

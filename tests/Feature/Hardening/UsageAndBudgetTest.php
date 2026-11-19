@@ -15,6 +15,7 @@ use App\Services\Usage\UsageMeter;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\Data\Usage;
 use Livewire\Livewire;
 
@@ -45,6 +46,20 @@ it('prices tokens from the pricing config', function () {
     expect($meter->costMicros('claude-sonnet-5-5', 1_000_000, 100_000))->toBe(3_000_000)
         ->and($meter->costMicros('claude-opus-5-5', 10_000, 1_000))->toBe(60_000)
         ->and($meter->costMicros('some-unknown-model', 10_000, 1_000))->toBe(0);
+});
+
+it('prices cached input tokens at the cache prices', function () {
+    [, $organization] = userInOrganization(OrganizationRole::Owner);
+    $meter = app(UsageMeter::class);
+
+    $usage = $meter->record($organization, AiFeature::Review, 'anthropic', 'claude-sonnet-5-5', new TextUsage(1_000_000, 0, cacheReadInputTokens: 800_000, cacheWriteInputTokens: 100_000));
+
+    // 100k uncached × $2 + 800k read × $0.20 + 100k written × $2.50
+    expect($usage)->cache_read_tokens->toBe(800_000)->cache_write_tokens->toBe(100_000)->cost_micros->toBe(610_000);
+
+    $organization->modelPrices()->create(['model' => 'claude-sonnet-5-5', 'input_per_million' => 2, 'output_per_million' => 10, 'cache_read_per_million' => 0.5, 'cache_write_per_million' => 2]);
+
+    expect($meter->costMicros('claude-sonnet-5-5', 1_000_000, 0, $organization, 800_000, 100_000))->toBe(800_000);
 });
 
 it('stops reviewing once the monthly budget is spent', function () {
@@ -136,13 +151,17 @@ it('lets owners price a model and prices the calls recorded without a price', fu
     [$owner, $organization] = userInOrganization(OrganizationRole::Owner);
     $call = AiUsage::factory()->for($organization)->create(['model' => 'vendor/new-model', 'input_tokens' => 1_000_000, 'output_tokens' => 100_000, 'cost_micros' => 0]);
 
+    $cachedCall = AiUsage::factory()->for($organization)->create(['model' => 'vendor/new-model', 'input_tokens' => 1_000_000, 'cache_read_tokens' => 1_000_000, 'output_tokens' => 0, 'cost_micros' => 0]);
+
     $page = Livewire::actingAs($owner)->test('pages::settings.usage');
 
-    expect($page->get('prices'))->toBe([['model' => 'vendor/new-model', 'input' => '', 'output' => '']]);
+    expect($page->get('prices'))->toBe([['model' => 'vendor/new-model', 'input' => '', 'output' => '', 'cache_read' => '', 'cache_write' => '']]);
 
-    $page->set('prices.0.input', '2')->set('prices.0.output', '10')->call('savePrices')->assertHasNoErrors();
+    $page->set('prices.0.input', '2')->set('prices.0.output', '10')->set('prices.0.cache_read', '0.5')->call('savePrices')->assertHasNoErrors();
 
     expect($call->fresh()->cost_micros)->toBe(3_000_000)
+        ->and($cachedCall->fresh()->cost_micros)->toBe(500_000)
+        ->and($page->get('prices.0.cache_read'))->toBe('0.5')
         ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0, $organization))->toBe(2_000_000)
         ->and(app(UsageMeter::class)->costMicros('vendor/new-model', 1_000_000, 0))->toBe(0);
 });

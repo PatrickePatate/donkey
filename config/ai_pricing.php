@@ -23,6 +23,14 @@ return [
     ],
 
     /*
+    | Prompt-cache prices, as a share of the input price, for models without
+    | an explicit cache price. Anthropic: reads 0.1×, writes 1.25×.
+    */
+
+    'cache_read_ratio' => 0.1,
+    'cache_write_ratio' => 1.25,
+
+    /*
     | Owners get an email when the month's spend crosses these shares of the budget.
     */
 

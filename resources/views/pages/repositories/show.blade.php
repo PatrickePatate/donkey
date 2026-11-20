@@ -128,7 +128,7 @@ new class extends Component
                 <x-ui.badge variant="outline">Risk threshold {{ $repository->effectiveRiskThreshold() }}</x-ui.badge>
             </div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
             @can('update', $repository)
                 <x-ui.button variant="outline" x-on:click="$dispatch('open-dialog', 'add-claude-skill')"><x-ui.icon name="plus" /> Add Claude skill</x-ui.button>
                 <x-ui.dialog name="add-claude-skill" title="Add the Donkey skill for Claude?">
@@ -149,7 +149,7 @@ new class extends Component
         </div>
     </div>
 
-    <div class="flex gap-4 border-b text-sm" role="tablist">
+    <div class="flex flex-wrap gap-x-4 border-b text-sm" role="tablist">
         @foreach ($tabs as $key => $label)
             <button
                 type="button"

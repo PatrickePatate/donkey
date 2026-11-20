@@ -292,7 +292,7 @@ new class extends Component
                 <span>·</span>
                 <x-github-user :login="$pullRequest->author_login" />
                 <span>·</span>
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ $pullRequest->head_ref }} → {{ $pullRequest->base_ref }}</code>
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs break-all">{{ $pullRequest->head_ref }} → {{ $pullRequest->base_ref }}</code>
                 <x-ui.badge :variant="$pullRequest->isOpen() ? 'success' : 'secondary'">{{ ucfirst($pullRequest->state) }}</x-ui.badge>
                 @if ($pullRequest->is_draft)
                     <x-ui.badge variant="outline">Draft</x-ui.badge>
@@ -303,7 +303,7 @@ new class extends Component
             </p>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             <x-ui.button variant="outline" :href="$pullRequest->html_url" target="_blank" rel="noopener">
                 <x-ui.icon name="external-link" /> GitHub
             </x-ui.button>
